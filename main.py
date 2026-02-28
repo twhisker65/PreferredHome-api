@@ -129,7 +129,7 @@ def sheet_row_to_api(row: Dict[str, Any], sheet_to_api: Dict[str, str]) -> Dict[
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": "LOCAL DEV"}
 
 
 # ----------------------------
