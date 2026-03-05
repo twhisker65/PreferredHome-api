@@ -1,0 +1,50 @@
+BUILD 3.1.13.1 — Hotfix: Align API column names to camelCase sheet headers
+Generated: March 5, 2026
+
+PROBLEM
+-------
+After Build 3.1.13 renamed Google Sheet headers to camelCase, the app
+showed blank data on all screens. The Render API backend had a hardcoded
+list of column names (LISTINGS_COLUMNS in config_constants.py) still using
+the old plain English names (e.g. "Building Name", "Monthly Rent").
+This caused the API to fail to find any columns in the sheet, returning
+empty data for every listing.
+
+FIX
+---
+Updated config_constants.py to match the new camelCase sheet headers.
+All column name lists updated:
+  - LISTINGS_COLUMNS       (66 columns, now all camelCase)
+  - BOOLEAN_FIELDS
+  - NUMERIC_FIELDS
+  - DROPDOWN_FIELDS
+  - CATEGORY_FIELDS
+  - CHILDREN_GATED_FIELDS
+  - CAR_GATED_FIELDS
+  - PETS_GATED_FIELDS
+  - BASELINE_COMPARED_FIELDS
+  - CARD_FIELDS
+
+NOTE: Display labels (dropdown option values, category item names) were
+NOT changed — these are user-facing strings, not column names.
+
+FILE CHANGED
+------------
+preferredhome_api/core/config_constants.py
+
+REPOSITORY
+----------
+PreferredHome-api (NOT PreferredHome-mobile)
+
+DEPLOYMENT STEPS
+----------------
+1. Copy config_constants.py into your PreferredHome-api repo at:
+   preferredhome_api/core/config_constants.py
+2. Commit via GitHub Desktop
+3. Push — Render will auto-deploy
+4. Wait ~60 seconds for Render to restart
+5. Pull to refresh in the app — listings should display correctly
+
+SUGGESTED COMMIT MESSAGE
+------------------------
+Build 3.1.13.1 — Hotfix: Align API column names to camelCase sheet headers

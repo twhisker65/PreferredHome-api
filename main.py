@@ -50,10 +50,19 @@ def _words_from_sheet_header(h: str) -> List[str]:
     return [w for w in h.split() if w]
 
 
+def _is_camel_case(h: str) -> bool:
+    """Return True if h is already a valid camelCase identifier (no spaces or special chars)."""
+    return bool(re.match(r"^[a-z][A-Za-z0-9]*$", h))
+
+
 def sheet_key_to_camel(h: str) -> str:
     # Preserve "ID" exactly as "id"
     if h.strip().upper() == "ID":
         return "id"
+    # If the header is already camelCase, pass it through unchanged.
+    # This handles sheets where headers have been pre-normalised to camelCase.
+    if _is_camel_case(h.strip()):
+        return h.strip()
     words = _words_from_sheet_header(h)
     if not words:
         return "field"
