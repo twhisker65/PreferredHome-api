@@ -1,14 +1,19 @@
+# =============================================================
+# main.py — PreferredHome API Build 3.1.15.5
+# FastAPI entry point. All NaN sanitization applied here.
+# =============================================================
+
 from __future__ import annotations
 
 import re
 import math
-
 from typing import Any, Dict, List, Tuple
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from preferredhome_api.core.settings import get_settings
+from preferredhome_api.core import config_constants as cfg
 from preferredhome_api.storage.sheets_storage import (
     load_listings_df,
     add_listing,
@@ -22,7 +27,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id
 
-app = FastAPI(title="PreferredHome API", version="0.2.0")
+app = FastAPI(title="PreferredHome API", version="3.1.15.5")
 
 settings = get_settings()
 app.add_middleware(
@@ -34,17 +39,15 @@ app.add_middleware(
 )
 
 
-# ----------------------------
-# Key mapping: Sheet <-> API
-# ----------------------------
+# -------------------------------------------------------------------
+# KEY MAPPING — Sheet column names <-> API camelCase keys
+# -------------------------------------------------------------------
 
 _non_alnum = re.compile(r"[^A-Za-z0-9]+")
 
 
 def _words_from_sheet_header(h: str) -> List[str]:
-    h = h.replace("#", " Number ")
-    h = h.replace("/", " ")
-    h = h.replace("&", " ")
+    h = h.replace("#", " Number ").replace("/", " ").replace("&", " ")
     h = _non_alnum.sub(" ", h).strip()
     return [w for w in h.split() if w]
 
@@ -62,7 +65,7 @@ def sheet_key_to_camel(h: str) -> str:
     if not words:
         return "field"
     first = words[0].lower()
-    rest = [w[:1].upper() + w[1:].lower() if w else "" for w in words[1:]]
+    rest = [w[:1].upper() + w[1:].lower() for w in words[1:] if w]
     return first + "".join(rest)
 
 
@@ -73,43 +76,38 @@ def _norm_api_key(k: str) -> str:
 def build_listings_keymaps() -> Tuple[Dict[str, str], Dict[str, str]]:
     df = load_listings_df()
     cols = [str(c) for c in df.columns.tolist()]
-
     sheet_to_api: Dict[str, str] = {}
     api_to_sheet: Dict[str, str] = {}
-
     for col in cols:
         api_key = sheet_key_to_camel(col)
         sheet_to_api[col] = api_key
         api_to_sheet[_norm_api_key(api_key)] = col
-
-    aliases = {
+    # Common aliases
+    for alias, canonical in {
         "unit": "unitNumber",
         "zipcode": "zipCode",
         "listingurl": "listingUrl",
         "photourl": "photoUrl",
-    }
-    for alias_key, canonical in aliases.items():
-        canonical_norm = _norm_api_key(canonical)
-        if canonical_norm in api_to_sheet:
-            api_to_sheet[alias_key] = api_to_sheet[canonical_norm]
-
+    }.items():
+        cn = _norm_api_key(canonical)
+        if cn in api_to_sheet:
+            api_to_sheet[alias] = api_to_sheet[cn]
     return api_to_sheet, sheet_to_api
 
 
-def api_payload_to_sheet(payload: Dict[str, Any], api_to_sheet: Dict[str, str]) -> Dict[str, Any]:
+def api_payload_to_sheet(payload: Dict[str, Any],
+                          api_to_sheet: Dict[str, str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for k, v in (payload or {}).items():
         if k is None:
             continue
         nk = _norm_api_key(str(k))
-        if nk in api_to_sheet:
-            out[api_to_sheet[nk]] = v
-        else:
-            out[str(k)] = v
+        out[api_to_sheet[nk] if nk in api_to_sheet else str(k)] = v
     return out
 
 
-def sheet_row_to_api(row: Dict[str, Any], sheet_to_api: Dict[str, str]) -> Dict[str, Any]:
+def sheet_row_to_api(row: Dict[str, Any],
+                      sheet_to_api: Dict[str, str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for k, v in (row or {}).items():
         api_key = sheet_to_api.get(str(k), sheet_key_to_camel(str(k)))
@@ -117,54 +115,52 @@ def sheet_row_to_api(row: Dict[str, Any], sheet_to_api: Dict[str, str]) -> Dict[
     return out
 
 
-# ----------------------------
-# FIX Build 3.1.15.4
-# Sanitize incoming payload — replace None, NaN, and blank numeric
-# values with "" before they reach pandas, preventing JSON NaN errors.
-# ----------------------------
+# -------------------------------------------------------------------
+# NaN SANITIZATION
+# Uses cfg.NUMERIC_FIELDS (camelCase) — single source of truth.
+# Applied before AND after key mapping to catch all edge cases.
+# -------------------------------------------------------------------
 
-# These match cfg.NUMERIC_FIELDS exactly
-_NUMERIC_FIELDS = {
-    "Floor", "Bedrooms", "Bathrooms", "Square Footage",
-    "Monthly Rent", "Parking Fee", "Amenity Fee", "Admin Fee",
-    "Utility Fee", "Other Fee", "Total Monthly",
-    "Security Deposit", "Application Fee",
-    "Commute Time", "Walk Score", "Transit Score", "Bike Score",
-    "Elementary School Rating", "Elementary School Distance",
-    "Middle School Rating", "Middle School Distance",
-    "High School Rating", "High School Distance",
-}
+_NUMERIC_SET = set(cfg.NUMERIC_FIELDS)
+
+
+def _sanitize_value(v: Any) -> Any:
+    """Return empty string for None, NaN, or blank numeric values."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and math.isnan(v):
+        return ""
+    if str(v).strip().lower() in ("nan", "none", ""):
+        return ""
+    return v
+
 
 def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Replace any None, float NaN, or non-numeric string in a numeric field
-    with empty string "" before the payload reaches pandas.
-    This prevents 'Out of range float values are not JSON compliant: nan'.
+    Sanitize all numeric fields in a payload — replace None/NaN with "".
+    Also replaces None on non-numeric fields to prevent downstream errors.
     """
     out = {}
     for k, v in payload.items():
-        if k in _NUMERIC_FIELDS:
-            if v is None:
-                out[k] = ""
-            elif isinstance(v, float) and math.isnan(v):
-                out[k] = ""
-            elif v == "" or v == "nan" or v == "NaN":
-                out[k] = ""
-            else:
-                out[k] = v
+        if k in _NUMERIC_SET:
+            out[k] = _sanitize_value(v)
         else:
-            out[k] = v
+            out[k] = "" if v is None else v
     return out
 
 
+# -------------------------------------------------------------------
+# HEALTH
+# -------------------------------------------------------------------
+
 @app.get("/health")
 def health():
-    return {"ok": "LOCAL DEV"}
+    return {"ok": "PreferredHome API 3.1.15.5"}
 
 
-# ----------------------------
-# Listings
-# ----------------------------
+# -------------------------------------------------------------------
+# LISTINGS
+# -------------------------------------------------------------------
 
 @app.get("/listings")
 def listings_get():
@@ -178,15 +174,19 @@ def listings_get():
 def listings_post(payload: Dict[str, Any]):
     try:
         api_to_sheet, sheet_to_api = build_listings_keymaps()
+
+        # Sanitize camelCase payload from mobile before mapping
+        payload = _sanitize_payload(payload)
+
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
 
-        # FIX Bug 3: always pass lowercase "id"
+        # Ensure id is always lowercase
         if "id" not in sheet_payload and "ID" not in sheet_payload:
             sheet_payload["id"] = generate_id()
         elif "ID" in sheet_payload and "id" not in sheet_payload:
             sheet_payload["id"] = sheet_payload.pop("ID")
 
-        # FIX Build 3.1.15.4: sanitize numeric fields before pandas sees them
+        # Sanitize again after mapping (sheet-column keys)
         sheet_payload = _sanitize_payload(sheet_payload)
 
         row = add_listing(sheet_payload)
@@ -199,13 +199,17 @@ def listings_post(payload: Dict[str, Any]):
 def listings_put(listing_id: str, payload: Dict[str, Any]):
     try:
         api_to_sheet, sheet_to_api = build_listings_keymaps()
+
+        # Sanitize camelCase payload from mobile before mapping
+        payload = _sanitize_payload(payload)
+
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
 
-        # FIX Bug 2: pass lowercase "id"
+        # Ensure id is always lowercase and correct
         sheet_payload.pop("ID", None)
         sheet_payload["id"] = listing_id
 
-        # FIX Build 3.1.15.4: sanitize numeric fields before pandas sees them
+        # Sanitize again after mapping (sheet-column keys)
         sheet_payload = _sanitize_payload(sheet_payload)
 
         row = update_listing(listing_id, sheet_payload)
@@ -225,9 +229,9 @@ def listings_delete(listing_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-# ----------------------------
-# Baseline
-# ----------------------------
+# -------------------------------------------------------------------
+# BASELINE
+# -------------------------------------------------------------------
 
 def baseline_key_to_camel(k: str) -> str:
     if k.strip().upper() == "ID":
@@ -235,7 +239,9 @@ def baseline_key_to_camel(k: str) -> str:
     return sheet_key_to_camel(k)
 
 
-def build_baseline_keymaps(existing: Dict[str, Any]) -> Tuple[Dict[str, str], Dict[str, str]]:
+def build_baseline_keymaps(
+    existing: Dict[str, Any]
+) -> Tuple[Dict[str, str], Dict[str, str]]:
     sheet_keys = [str(k) for k in (existing or {}).keys()]
     sheet_to_api = {k: baseline_key_to_camel(k) for k in sheet_keys}
     api_to_sheet = {_norm_api_key(v): k for k, v in sheet_to_api.items()}
@@ -266,15 +272,18 @@ def baseline_put(payload: Dict[str, Any]):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ----------------------------
-# Categories
-# ----------------------------
+# -------------------------------------------------------------------
+# CATEGORIES
+# -------------------------------------------------------------------
 
 @app.get("/categories")
 def categories_get():
     df = load_categories_df()
     rows = df.fillna("").to_dict(orient="records")
-    sheet_to_api = {k: sheet_key_to_camel(str(k)) for k in (df.columns.tolist() if not df.empty else [])}
+    sheet_to_api = {
+        k: sheet_key_to_camel(str(k))
+        for k in (df.columns.tolist() if not df.empty else [])
+    }
     return [sheet_row_to_api(r, sheet_to_api) for r in rows]
 
 
@@ -282,12 +291,16 @@ def categories_get():
 def categories_post(payload: Dict[str, Any]):
     try:
         category = payload.get("category") or payload.get("Category")
-        label = payload.get("label") or payload.get("Label")
-        weight = payload.get("weight") or payload.get("Weight")
-        notes = payload.get("notes") or payload.get("Notes") or ""
+        label    = payload.get("label")    or payload.get("Label")
+        weight   = payload.get("weight")   or payload.get("Weight")
+        notes    = payload.get("notes")    or payload.get("Notes") or ""
         if not category or not label:
             raise ValueError("category and label are required.")
-        return add_category_item(category, label, weight=weight if weight != "" else None, notes=notes)
+        return add_category_item(
+            category, label,
+            weight=weight if weight != "" else None,
+            notes=notes,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

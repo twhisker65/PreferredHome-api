@@ -1,7 +1,7 @@
 # =============================================================
-# config.py — Apartment Tracker Build 3
-# All constants, field definitions, and dropdown options.
-# This file is imported by every other file in the app.
+# config_constants.py — PreferredHome API Build 3.1.15.5
+# Single source of truth for all constants, field definitions,
+# dropdown options, and column names.
 # =============================================================
 
 # -------------------------------------------------------------------
@@ -9,57 +9,63 @@
 # -------------------------------------------------------------------
 SPREADSHEET_NAME = "Apartment Listings"
 
-# Tab names inside Google Sheets
-TAB_LISTINGS  = "listings"
-TAB_BASELINE  = "baseline"
+TAB_LISTINGS   = "listings"
+TAB_BASELINE   = "baseline"
 TAB_CATEGORIES = "categories"
 
 # -------------------------------------------------------------------
-# STATUS OPTIONS
+# STATUS OPTIONS — 10-status pipeline (matches mobile exactly)
 # -------------------------------------------------------------------
 STATUS_OPTIONS = [
-    "Available",
-    "Inquired",
-    "Visited",
+    "New",
+    "Contacted",
+    "Scheduled",
+    "Viewed",
+    "Shortlisted",
     "Applied",
-    "Rejected",
-    "No Longer Available",
-    "Not Interested",
+    "Approved",
     "Signed",
+    "Rejected",
+    "Archived",
 ]
 
-# Color for each status — used by the pill badge component
+# Background color for each status pill (matches mobile colors.ts)
 STATUS_COLORS = {
-    "Available":           "#28a745",   # Green
-    "Inquired":            "#007bff",   # Blue
-    "Visited":             "#003d99",   # Dark Blue
-    "Applied":             "#fd7e14",   # Orange
-    "Rejected":            "#dc3545",   # Red
-    "Not Interested":      "#6c757d",   # Gray
-    "No Longer Available": "#343a40",   # Dark Gray
-    "Signed":              "#6f42c1",   # Purple
+    "New":        "#2563EB",   # blue
+    "Contacted":  "#2563EB",   # blue
+    "Scheduled":  "#2563EB",   # blue
+    "Viewed":     "#2563EB",   # blue
+    "Shortlisted":"#D97706",   # amber
+    "Applied":    "#2563EB",   # blue
+    "Approved":   "#10B981",   # green
+    "Signed":     "#0D9488",   # teal
+    "Rejected":   "#EF4444",   # red
+    "Archived":   "#475569",   # grey
+    "Unknown":    "#475569",   # grey
 }
 
 STATUS_TEXT_COLORS = {
-    "Available":           "#ffffff",
-    "Inquired":            "#ffffff",
-    "Visited":             "#ffffff",
-    "Applied":             "#ffffff",
-    "Rejected":            "#ffffff",
-    "Not Interested":      "#ffffff",
-    "No Longer Available": "#ffffff",
-    "Signed":              "#ffffff",
+    "New":        "#ffffff",
+    "Contacted":  "#ffffff",
+    "Scheduled":  "#ffffff",
+    "Viewed":     "#ffffff",
+    "Shortlisted":"#ffffff",
+    "Applied":    "#ffffff",
+    "Approved":   "#ffffff",
+    "Signed":     "#ffffff",
+    "Rejected":   "#ffffff",
+    "Archived":   "#ffffff",
+    "Unknown":    "#ffffff",
 }
 
 # -------------------------------------------------------------------
 # DROPDOWN OPTIONS
 # -------------------------------------------------------------------
-UNIT_TYPE_OPTIONS  = ["Rental", "Condo", "Co-Op"]
-AC_TYPE_OPTIONS    = ["Central", "Wall", "Window", "None"]
-LAUNDRY_OPTIONS    = ["In-Unit", "On Floor", "In Building", "None"]
-PARKING_OPTIONS    = ["Covered", "Uncovered", "None"]
+UNIT_TYPE_OPTIONS = ["Rental", "Condo", "Co-Op"]
+AC_TYPE_OPTIONS   = ["Central", "Wall", "Window", "None"]
+LAUNDRY_OPTIONS   = ["In-Unit", "On Floor", "In Building", "None"]
+PARKING_OPTIONS   = ["Covered", "Uncovered", "None"]
 
-# Listing sites — auto-detected from URL, or selected manually
 LISTING_SITE_OPTIONS = [
     "Zillow",
     "StreetEasy",
@@ -70,7 +76,6 @@ LISTING_SITE_OPTIONS = [
     "Other",
 ]
 
-# URL keywords used for auto-detection of listing site
 LISTING_SITE_URL_KEYWORDS = {
     "zillow.com":       "Zillow",
     "streeteasy.com":   "StreetEasy",
@@ -82,30 +87,27 @@ LISTING_SITE_URL_KEYWORDS = {
 
 # -------------------------------------------------------------------
 # PROFILE TOGGLES
-# When a toggle is Off, the associated fields are hidden everywhere.
 # -------------------------------------------------------------------
 PROFILE_TOGGLES = {
     "children": {
-        "label":   "Children",
-        "default": False,
+        "label":       "Children",
+        "default":     False,
         "description": "Show school ratings and information",
     },
     "pets": {
-        "label":   "Pets",
-        "default": False,
+        "label":       "Pets",
+        "default":     False,
         "description": "Show pet amenities category",
     },
     "car": {
-        "label":   "Car",
-        "default": False,
+        "label":       "Car",
+        "default":     False,
         "description": "Show parking type and parking fee",
     },
 }
 
 # -------------------------------------------------------------------
 # BASELINE SETTINGS
-# These are the settings stored in the "baseline" tab.
-# Each key matches the "Setting" column value in Google Sheets.
 # -------------------------------------------------------------------
 BASELINE_SETTINGS = [
     "Max Monthly Rent",
@@ -120,21 +122,19 @@ BASELINE_SETTINGS = [
 ]
 
 BASELINE_DEFAULTS = {
-    "Max Monthly Rent":       "2500",
-    "Min Square Footage":     "700",
-    "Max Commute Time":       "30",
-    "Min Walk Score":         "70",
-    "AC Type Ranking":        "Central,Wall,Window,None",
-    "Laundry Ranking":        "In-Unit,On Floor,In Building,None",
-    "Parking Ranking":        "Covered,Uncovered,None",
-    "Board Approval Required":"False",
-    "Broker Fee Acceptable":  "False",
+    "Max Monthly Rent":        "2500",
+    "Min Square Footage":      "700",
+    "Max Commute Time":        "30",
+    "Min Walk Score":          "70",
+    "AC Type Ranking":         "Central,Wall,Window,None",
+    "Laundry Ranking":         "In-Unit,On Floor,In Building,None",
+    "Parking Ranking":         "Covered,Uncovered,None",
+    "Board Approval Required": "False",
+    "Broker Fee Acceptable":   "False",
 }
 
 # -------------------------------------------------------------------
 # MULTI-SELECT CATEGORY DEFINITIONS
-# Pre-built options for each category.
-# Users can also add their own custom items via the Profile page.
 # -------------------------------------------------------------------
 CATEGORY_DEFINITIONS = {
     "Utilities Included": [
@@ -157,17 +157,15 @@ CATEGORY_DEFINITIONS = {
     ],
 }
 
-# Which categories are gated by a profile toggle
 CATEGORY_TOGGLE_GATE = {
     "Pet Amenities": "pets",
 }
 
 # -------------------------------------------------------------------
-# LISTINGS TAB — COLUMN ORDER
-# This must exactly match the column headers in Google Sheets.
+# LISTINGS TAB — COLUMN ORDER (camelCase — matches Google Sheet headers)
 # -------------------------------------------------------------------
 LISTINGS_COLUMNS = [
-    # Status & ID
+    # Identity
     "id",
     "status",
     "preferred",
@@ -221,7 +219,7 @@ LISTINGS_COLUMNS = [
     "walkScore",
     "transitScore",
     "bikeScore",
-    # Categories (stored as comma-separated text)
+    # Categories (comma-separated)
     "utilitiesIncluded",
     "unitFeatures",
     "buildingAmenities",
@@ -246,10 +244,9 @@ LISTINGS_COLUMNS = [
 ]
 
 # -------------------------------------------------------------------
-# FIELD TYPE CLASSIFICATIONS
+# FIELD TYPE CLASSIFICATIONS (all camelCase — matches LISTINGS_COLUMNS)
 # -------------------------------------------------------------------
 
-# Fields that store True/False values
 BOOLEAN_FIELDS = [
     "preferred",
     "topFloor",
@@ -259,7 +256,6 @@ BOOLEAN_FIELDS = [
     "noBrokerFee",
 ]
 
-# Fields that store numbers
 NUMERIC_FIELDS = [
     "floorNumber",
     "bedrooms",
@@ -286,7 +282,6 @@ NUMERIC_FIELDS = [
     "highDistance",
 ]
 
-# Fields that are dropdown selections
 DROPDOWN_FIELDS = [
     "status",
     "unitType",
@@ -296,7 +291,6 @@ DROPDOWN_FIELDS = [
     "listingSite",
 ]
 
-# Fields that store comma-separated category lists
 CATEGORY_FIELDS = [
     "utilitiesIncluded",
     "unitFeatures",
@@ -305,7 +299,6 @@ CATEGORY_FIELDS = [
     "closeBy",
 ]
 
-# Fields that are profile-gated (hidden when toggle is Off)
 CHILDREN_GATED_FIELDS = [
     "elementarySchoolName",
     "elementaryRating",
@@ -330,7 +323,7 @@ PETS_GATED_FIELDS = [
     "petAmenities",
 ]
 
-# Fields used in baseline comparison (color-coded on Compare page)
+# Fields used in baseline comparison (Compare screen)
 BASELINE_COMPARED_FIELDS = [
     "baseRent",
     "squareFootage",
@@ -343,7 +336,7 @@ BASELINE_COMPARED_FIELDS = [
     "noBrokerFee",
 ]
 
-# Fields that display on listing cards
+# Fields shown on listing cards
 CARD_FIELDS = [
     "buildingName",
     "streetAddress",
@@ -371,19 +364,18 @@ CARD_FIELDS = [
 
 # -------------------------------------------------------------------
 # COMPARISON COLOR THRESHOLDS
-# Used on the Compare page to color-code field values.
 # -------------------------------------------------------------------
 COMPARISON_COLORS = {
-    "green":  "#28a745",
-    "yellow": "#ffc107",
-    "red":    "#dc3545",
-    "gray":   "#6c757d",    # for fields with no baseline
+    "green":  "#10B981",
+    "yellow": "#D97706",
+    "red":    "#EF4444",
+    "gray":   "#475569",
 }
 
 # -------------------------------------------------------------------
-# APP DISPLAY SETTINGS
+# APP SETTINGS
 # -------------------------------------------------------------------
-APP_TITLE   = "Apartment Tracker"
-APP_ICON    = "🏠"
-NAV_PAGES   = ["Home", "Listings", "Add", "Compare", "Profile"]
-NAV_ICONS   = ["🏠", "🏢", "➕", "⚖️", "👤"]
+APP_TITLE = "PreferredHome"
+APP_ICON  = "🏠"
+NAV_PAGES = ["Home", "Listings", "Add", "Compare", "Profile"]
+NAV_ICONS = ["🏠", "🏢", "➕", "⚖️", "👤"]
