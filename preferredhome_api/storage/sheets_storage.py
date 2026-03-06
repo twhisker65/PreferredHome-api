@@ -70,6 +70,17 @@ def load_listings_df() -> pd.DataFrame:
     df = df[cfg.LISTINGS_COLUMNS]
     return df
 
+def _sanitize_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Replace any float NaN values with empty string so JSON serialization never fails."""
+    import math
+    out = {}
+    for k, v in row.items():
+        if isinstance(v, float) and math.isnan(v):
+            out[k] = ""
+        else:
+            out[k] = v
+    return out
+
 def add_listing(data: Dict[str, Any]) -> Dict[str, Any]:
     df = load_listings_df()
     listing_id = data.get("ID") or data.get("id") or generate_id()
@@ -77,21 +88,21 @@ def add_listing(data: Dict[str, Any]) -> Dict[str, Any]:
     row["id"] = listing_id
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     df_to_sheet(cfg.TAB_LISTINGS, df)
-    return row
+    return _sanitize_row(row)
 
 def update_listing(listing_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     df = load_listings_df()
-    if "ID" not in df.columns:
-        raise KeyError("Listings sheet missing ID column.")
-    mask = df["ID"].astype(str) == str(listing_id)
+    if "id" not in df.columns:
+        raise KeyError("Listings sheet missing id column.")
+    mask = df["id"].astype(str) == str(listing_id)
     if not mask.any():
         raise KeyError(f"Listing ID not found: {listing_id}")
     idx = df[mask].index[0]
     for k, v in data.items():
-        if k in df.columns and k != "ID":
+        if k in df.columns and k != "id":
             df.at[idx, k] = v
     df_to_sheet(cfg.TAB_LISTINGS, df)
-    return df.loc[idx].to_dict()
+    return _sanitize_row(df.loc[idx].to_dict())
 
 def delete_listing(listing_id: str) -> None:
     df = load_listings_df()

@@ -1,0 +1,39 @@
+BUILD_3.1.15.2_HOTFIX_README.txt
+=================================
+PreferredHome API — Hotfix Build 3.1.15.2
+Generated: March 2026
+
+CHANGED FILES
+-------------
+preferredhome_api/storage/sheets_storage.py
+
+WHAT CHANGED
+------------
+Bug: After saving to the sheet, the API tried to return the saved row as JSON.
+Any numeric field left empty (e.g. amenityFee, adminFee) was stored internally
+as float NaN by pandas. Python's JSON serializer cannot handle NaN, so it threw:
+
+  HTTP 400 - Out of range float values are not JSON compliant: nan
+
+This happened AFTER the sheet write had already completed — meaning the data
+was saved successfully but the API crashed on the response. Because df_to_sheet()
+calls ws.clear() before writing, a crash at that point left the sheet empty.
+
+Fix: Added _sanitize_row() helper that replaces any NaN float values with ""
+before the row is returned. Applied to both add_listing() and update_listing().
+
+Also corrected update_listing() to use lowercase "id" column (matching the sheet),
+consistent with the fix made in Build 3.1.15.1.
+
+DEPLOY STEPS
+------------
+1. Copy preferredhome_api/storage/sheets_storage.py into your local
+   PreferredHome-api repo folder (overwrite existing)
+2. Commit via GitHub Desktop
+3. Push to GitHub
+4. Render dashboard → Manual Deploy → Deploy latest commit
+5. Wait ~60 seconds for green Live status
+
+COMMIT MESSAGE
+--------------
+Build 3.1.15.2 — Hotfix: sanitize NaN float values before JSON response to fix save crash
