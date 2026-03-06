@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import math
 
 from typing import Any, Dict, List, Tuple
 
@@ -49,7 +50,6 @@ def _words_from_sheet_header(h: str) -> List[str]:
 
 
 def _is_camel_case(h: str) -> bool:
-    """Return True if h is already a valid camelCase identifier (no spaces or special chars)."""
     return bool(re.match(r"^[a-z][A-Za-z0-9]*$", h))
 
 
@@ -117,6 +117,46 @@ def sheet_row_to_api(row: Dict[str, Any], sheet_to_api: Dict[str, str]) -> Dict[
     return out
 
 
+# ----------------------------
+# FIX Build 3.1.15.4
+# Sanitize incoming payload — replace None, NaN, and blank numeric
+# values with "" before they reach pandas, preventing JSON NaN errors.
+# ----------------------------
+
+# These match cfg.NUMERIC_FIELDS exactly
+_NUMERIC_FIELDS = {
+    "Floor", "Bedrooms", "Bathrooms", "Square Footage",
+    "Monthly Rent", "Parking Fee", "Amenity Fee", "Admin Fee",
+    "Utility Fee", "Other Fee", "Total Monthly",
+    "Security Deposit", "Application Fee",
+    "Commute Time", "Walk Score", "Transit Score", "Bike Score",
+    "Elementary School Rating", "Elementary School Distance",
+    "Middle School Rating", "Middle School Distance",
+    "High School Rating", "High School Distance",
+}
+
+def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Replace any None, float NaN, or non-numeric string in a numeric field
+    with empty string "" before the payload reaches pandas.
+    This prevents 'Out of range float values are not JSON compliant: nan'.
+    """
+    out = {}
+    for k, v in payload.items():
+        if k in _NUMERIC_FIELDS:
+            if v is None:
+                out[k] = ""
+            elif isinstance(v, float) and math.isnan(v):
+                out[k] = ""
+            elif v == "" or v == "nan" or v == "NaN":
+                out[k] = ""
+            else:
+                out[k] = v
+        else:
+            out[k] = v
+    return out
+
+
 @app.get("/health")
 def health():
     return {"ok": "LOCAL DEV"}
@@ -140,11 +180,14 @@ def listings_post(payload: Dict[str, Any]):
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
 
-        # FIX Bug 3: always pass lowercase "id" so add_listing() finds it cleanly
+        # FIX Bug 3: always pass lowercase "id"
         if "id" not in sheet_payload and "ID" not in sheet_payload:
             sheet_payload["id"] = generate_id()
         elif "ID" in sheet_payload and "id" not in sheet_payload:
             sheet_payload["id"] = sheet_payload.pop("ID")
+
+        # FIX Build 3.1.15.4: sanitize numeric fields before pandas sees them
+        sheet_payload = _sanitize_payload(sheet_payload)
 
         row = add_listing(sheet_payload)
         return sheet_row_to_api(row, sheet_to_api)
@@ -158,10 +201,12 @@ def listings_put(listing_id: str, payload: Dict[str, Any]):
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
 
-        # FIX Bug 2: pass lowercase "id" so update_listing() matches correctly
-        # Remove any uppercase "ID" key that may have come through mapping
+        # FIX Bug 2: pass lowercase "id"
         sheet_payload.pop("ID", None)
         sheet_payload["id"] = listing_id
+
+        # FIX Build 3.1.15.4: sanitize numeric fields before pandas sees them
+        sheet_payload = _sanitize_payload(sheet_payload)
 
         row = update_listing(listing_id, sheet_payload)
         return sheet_row_to_api(row, sheet_to_api)
