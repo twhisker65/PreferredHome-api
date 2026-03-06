@@ -1,0 +1,97 @@
+BUILD_3.2.1_README.txt
+======================
+PreferredHome API — Build 3.2.1
+Generated: March 2026
+Repo: PreferredHome-api (MAIN branch)
+
+CHANGED FILES
+-------------
+preferredhome_api/utils/helpers.py
+preferredhome_api/storage/sheets_storage.py
+
+UNCHANGED FILES
+---------------
+main.py                                  — already correct (confirmed in code review)
+preferredhome_api/core/config_constants.py — no changes required
+preferredhome_api/core/models.py           — no changes required
+preferredhome_api/core/settings.py         — no changes required
+preferredhome_api/core/__init__.py         — no changes required
+preferredhome_api/storage/__init__.py      — no changes required
+preferredhome_api/utils/__init__.py        — no changes required
+preferredhome_api/__init__.py              — no changes required
+render.yaml                               — no changes required
+requirements.txt                          — no changes required
+.gitignore                                — no changes required
+.gitattributes                            — no changes required
+
+WHAT CHANGED
+------------
+
+FIX 1 — Boolean casing (helpers.py)
+  Problem: clean_row() wrote "True" / "False" (mixed case) to Google Sheets.
+  Google Sheets expects "TRUE" / "FALSE" (all caps).
+  Fix: clean_row() now writes "TRUE" if truthy, "FALSE" if falsy.
+  Also added a comment to parse_row() confirming it accepts both casings
+  for backwards compatibility with any older sheet data.
+  File: preferredhome_api/utils/helpers.py
+
+FIX 2 — df_to_sheet() data loss risk (sheets_storage.py)
+  Problem: df_to_sheet() called ws.clear() then ws.append_rows().
+  If the app crashed between those two steps, the sheet was permanently wiped.
+  This caused real data loss in Builds 3.1.15.1 and 3.1.15.2.
+  Fix: Safe backup/restore pattern added to df_to_sheet():
+    1. A full snapshot of the current sheet is taken before any changes.
+    2. The write proceeds (clear + append).
+    3. If the write fails at any point, the snapshot is restored automatically.
+  Also added _bool_to_sheet_str() helper that converts Python booleans
+  and mixed-case "True"/"False" strings to "TRUE"/"FALSE" at write time.
+  This ensures boolean casing is correct even when clean_row() is bypassed.
+  File: preferredhome_api/storage/sheets_storage.py
+
+FIX 3 — _NUMERIC_FIELDS import (main.py) — ALREADY CORRECT, NO CHANGE NEEDED
+  This was fixed in Build 3.1.15.5.
+  main.py already uses: _NUMERIC_SET = set(cfg.NUMERIC_FIELDS)
+  Confirmed correct. No change made.
+
+FINAL CODE REVIEW — ALL FIVE API FILES
+---------------------------------------
+config_constants.py — Clean. All 10 statuses correct. All field names camelCase.
+                       NUMERIC_FIELDS, BOOLEAN_FIELDS, DROPDOWN_FIELDS all correct.
+models.py           — Clean. Field alias is lowercase "id". Correct.
+helpers.py          — Fixed in this build (boolean casing). All camelCase references
+                       confirmed correct. clean_row() and parse_row() consistent.
+sheets_storage.py   — Fixed in this build (df_to_sheet safety + boolean write casing).
+                       All CRUD functions use lowercase "id". Correct.
+main.py             — Clean. _NUMERIC_SET imports from cfg. Key mapping functions
+                       correct. All endpoints (GET, POST, PUT, DELETE) confirmed.
+                       Sanitization applied before and after key mapping. Correct.
+
+DEPLOY STEPS
+------------
+1. Copy BOTH changed files into your local PreferredHome-api repo:
+   - preferredhome_api/utils/helpers.py
+   - preferredhome_api/storage/sheets_storage.py
+   (Overwrite the existing files. Do not delete the .git folder.)
+
+2. Commit via GitHub Desktop using the commit message below.
+
+3. Push to GitHub.
+
+4. Render dashboard → Manual Deploy → Deploy latest commit.
+
+5. Wait ~60 seconds for green Live status.
+
+6. Verify: open https://preferredhome-api.onrender.com/health
+   Expected response: {"ok":"PreferredHome API 3.1.15.5"}
+   Note: Health endpoint version label will update in a future build.
+
+7. Test: add a listing with a boolean field (e.g. Preferred = true).
+   Confirm the Google Sheet shows TRUE or FALSE in all caps.
+
+8. After confirming deploy is live, update the Google Sheet:
+   Change all existing boolean values from 'True'/'False' to 'TRUE'/'FALSE'.
+   (This was deferred from Build 3.1.15.5 — now is the right time.)
+
+COMMIT MESSAGE
+--------------
+Build 3.2.1 — API cleanup: boolean TRUE/FALSE casing, df_to_sheet backup/restore safety, code review confirmed clean

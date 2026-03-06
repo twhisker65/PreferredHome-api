@@ -1,5 +1,5 @@
 # =============================================================
-# sheets_storage.py — PreferredHome API Build 3.1.15.5
+# sheets_storage.py — PreferredHome API Build 3.2.1
 # Google Sheets read/write layer.
 # =============================================================
 
@@ -63,12 +63,64 @@ def sheet_to_df(tab_name: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _bool_to_sheet_str(v) -> str:
+    """
+    Converts any value to a string safe for writing to Google Sheets.
+    Python booleans and string 'True'/'False' are written as 'TRUE'/'FALSE'
+    (all caps) to match Google Sheets boolean convention.
+    """
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    s = str(v).strip()
+    if s == "True":
+        return "TRUE"
+    if s == "False":
+        return "FALSE"
+    return s
+
+
 def df_to_sheet(tab_name: str, df: pd.DataFrame):
+    """
+    Writes a DataFrame to a Google Sheet tab.
+
+    Safe backup/restore pattern:
+    - A snapshot of the current sheet is taken before any changes.
+    - If the write fails at any point, the snapshot is restored.
+    - This prevents data loss from a crash mid-write.
+
+    Boolean values are written as 'TRUE' / 'FALSE' (all caps).
+    """
     ws = get_worksheet(tab_name)
-    ws.clear()
-    ws.append_row(list(df.columns))
-    if len(df) > 0:
-        ws.append_rows(df.astype(str).values.tolist())
+
+    # --- Step 1: Take a backup snapshot of the current sheet ---
+    try:
+        backup = ws.get_all_values()  # List of rows including header
+    except Exception:
+        backup = []
+
+    # --- Step 2: Build the rows to write ---
+    header = list(df.columns)
+    # Apply boolean casing and convert all values to strings
+    data_rows = [
+        [_bool_to_sheet_str(cell) for cell in row]
+        for row in df.values.tolist()
+    ]
+    all_rows = [header] + data_rows
+
+    # --- Step 3: Write with restore on failure ---
+    try:
+        ws.clear()
+        if all_rows:
+            ws.append_rows(all_rows)
+    except Exception as write_error:
+        # Restore from backup to prevent data loss
+        if backup:
+            try:
+                ws.clear()
+                ws.append_rows(backup)
+            except Exception:
+                pass  # Best-effort restore — original error is re-raised below
+        raise write_error
 
 
 # -------------------------------------------------------------------
