@@ -1,0 +1,48 @@
+BUILD_3.1.15.1_README.txt
+=========================
+PreferredHome API — Hotfix Build 3.1.15.1
+Generated: March 2026
+
+CHANGED FILES
+-------------
+preferredhome_api/storage/sheets_storage.py
+
+WHAT CHANGED
+------------
+Bug: add_listing() wrote the generated ID to row["ID"] (uppercase), but the
+LISTINGS_COLUMNS list uses lowercase "id" to match the Google Sheet header.
+This caused the id column to be blank on every new row.
+
+The write sequence is:
+  1. ws.clear()       — sheet is wiped
+  2. ws.append_rows() — new data is written
+
+Because the id was going into a key that didn't match any column, the row
+structure was malformed on write. On some calls this caused an exception AFTER
+the clear had already run, leaving the sheet empty.
+
+Fix: Changed row["ID"] to row["id"] in add_listing() — one character.
+
+This is the only change in this hotfix.
+
+DEPLOY STEPS (API repo — Render)
+---------------------------------
+1. Copy preferredhome_api/storage/sheets_storage.py into your local
+   PreferredHome-api repo folder (overwrite existing)
+2. Commit via GitHub Desktop:
+   Build 3.1.15.1 — Hotfix: fix id key case in add_listing to prevent sheet wipe on save
+3. Push to GitHub
+4. Go to Render dashboard — select your service
+5. Click Manual Deploy → Deploy latest commit
+6. Wait ~60 seconds for Render to show green Live status
+7. Test: add a new listing in the app and confirm it appears in the sheet
+
+RESTORE YOUR GOOGLE SHEET
+--------------------------
+The sheet data was wiped by the failed save attempt. You will need to
+re-enter your test listings manually, or restore from a backup if you have one.
+After deploying this hotfix, new saves will work correctly.
+
+COMMIT MESSAGE
+--------------
+Build 3.1.15.1 — Hotfix: fix id key case in add_listing to prevent sheet wipe on save

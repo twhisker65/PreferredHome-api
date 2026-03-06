@@ -74,7 +74,7 @@ def add_listing(data: Dict[str, Any]) -> Dict[str, Any]:
     df = load_listings_df()
     listing_id = data.get("ID") or data.get("id") or generate_id()
     row = {col: data.get(col, "") for col in cfg.LISTINGS_COLUMNS}
-    row["ID"] = listing_id
+    row["id"] = listing_id
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     df_to_sheet(cfg.TAB_LISTINGS, df)
     return row
