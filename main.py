@@ -1,5 +1,5 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.1.15.5
+# main.py — PreferredHome API Build 3.2.2.1
 # FastAPI entry point. All NaN sanitization applied here.
 # =============================================================
 
@@ -27,7 +27,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id
 
-app = FastAPI(title="PreferredHome API", version="3.1.15.5")
+app = FastAPI(title="PreferredHome API", version="3.2.2.1")
 
 settings = get_settings()
 app.add_middleware(
@@ -155,7 +155,7 @@ def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.1.15.5"}
+    return {"ok": "PreferredHome API 3.2.2.1"}
 
 
 # -------------------------------------------------------------------
@@ -164,10 +164,13 @@ def health():
 
 @app.get("/listings")
 def listings_get():
-    api_to_sheet, sheet_to_api = build_listings_keymaps()
-    df = load_listings_df()
-    rows = df.fillna("").to_dict(orient="records")
-    return [sheet_row_to_api(r, sheet_to_api) for r in rows]
+    try:
+        api_to_sheet, sheet_to_api = build_listings_keymaps()
+        df = load_listings_df()
+        rows = df.fillna("").to_dict(orient="records")
+        return [sheet_row_to_api(r, sheet_to_api) for r in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/listings")
