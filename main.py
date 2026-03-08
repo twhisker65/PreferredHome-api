@@ -27,7 +27,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id
 
-app = FastAPI(title="PreferredHome API", version="3.2.2.1")
+app = FastAPI(title="PreferredHome API", version="3.2.2.2")
 
 settings = get_settings()
 app.add_middleware(
@@ -125,12 +125,12 @@ _NUMERIC_SET = set(cfg.NUMERIC_FIELDS)
 
 
 def _sanitize_value(v: Any) -> Any:
-    """Return empty string for None, NaN, or blank numeric values."""
+    """Return empty string for None, NaN, inf, or blank numeric values."""
     if v is None:
         return ""
-    if isinstance(v, float) and math.isnan(v):
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
         return ""
-    if str(v).strip().lower() in ("nan", "none", ""):
+    if str(v).strip().lower() in ("nan", "none", "inf", "-inf", ""):
         return ""
     return v
 
@@ -155,7 +155,7 @@ def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.2.1"}
+    return {"ok": "PreferredHome API 3.2.2.2"}
 
 
 # -------------------------------------------------------------------
@@ -167,7 +167,9 @@ def listings_get():
     try:
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         df = load_listings_df()
-        rows = df.fillna("").to_dict(orient="records")
+        # Replace NaN and inf/-inf before serialization
+        df = df.fillna("").replace([float("inf"), float("-inf")], "")
+        rows = df.to_dict(orient="records")
         return [sheet_row_to_api(r, sheet_to_api) for r in rows]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
