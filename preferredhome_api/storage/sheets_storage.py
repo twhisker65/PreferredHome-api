@@ -1,6 +1,10 @@
 # =============================================================
-# sheets_storage.py — PreferredHome API Build 3.2.1
+# sheets_storage.py — PreferredHome API Build 3.2.03 HOTFIX
 # Google Sheets read/write layer.
+# Fix: load_listings_df() now casts all columns to object dtype
+# after load. This prevents gspread from inferring int64 for any
+# column (e.g. Zip Code stored as a number in the sheet), which
+# caused HTTP 400 "Invalid value for dtype int64" on Edit saves.
 # =============================================================
 
 import math
@@ -150,6 +154,13 @@ def load_listings_df() -> pd.DataFrame:
         if col not in df.columns:
             df[col] = ""
     df = df[cfg.LISTINGS_COLUMNS]
+    # Cast all columns to object dtype.
+    # gspread infers Python types from sheet values — any column containing
+    # only integers (e.g. Zip Code stored as a number) gets dtype int64.
+    # df.at[idx, col] = <string> then raises a dtype error on Edit saves.
+    # Casting to object prevents this. Type conversion is handled downstream
+    # by helpers.py clean_row() / parse_row() — not by the DataFrame.
+    df = df.astype(object)
     return df
 
 
