@@ -1,5 +1,5 @@
 # =============================================================
-# config_constants.py — PreferredHome API Build 3.1.15.5
+# config_constants.py — PreferredHome API Build 3.2.11
 # Single source of truth for all constants, field definitions,
 # dropdown options, and column names.
 # =============================================================
@@ -61,10 +61,12 @@ STATUS_TEXT_COLORS = {
 # -------------------------------------------------------------------
 # DROPDOWN OPTIONS
 # -------------------------------------------------------------------
-UNIT_TYPE_OPTIONS = ["Rental", "Condo", "Co-Op"]
-AC_TYPE_OPTIONS   = ["Central", "Wall", "Window", "None"]
-LAUNDRY_OPTIONS   = ["In-Unit", "On Floor", "In Building", "None"]
-PARKING_OPTIONS   = ["Covered", "Uncovered", "None"]
+PROPERTY_TYPE_OPTIONS = ["Apartment", "Condo", "Co-op", "Townhouse", "House", "Other"]
+COOLING_TYPE_OPTIONS  = ["Central Air", "Wall Unit", "Window Unit", "None"]
+HEATING_TYPE_OPTIONS  = ["Forced Air", "Baseboard", "Radiant", "Steam", "Electric", "Natural Gas", "Oil", "Propane", "None"]
+LAUNDRY_OPTIONS       = ["In-Unit", "On Floor", "In Building", "None"]
+PARKING_OPTIONS       = ["Shared Garage", "Shared Lot", "Covered Space", "Attached Garage", "Detached Garage", "Driveway", "Carport", "Street", "None", "Other"]
+NUMBER_OF_FLOORS_OPTIONS = ["1", "2", "3", "4", "5+", "Unknown"]
 
 LISTING_SITE_OPTIONS = [
     "Zillow",
@@ -138,22 +140,35 @@ BASELINE_DEFAULTS = {
 # -------------------------------------------------------------------
 CATEGORY_DEFINITIONS = {
     "Utilities Included": [
-        "Gas", "Electric", "Internet", "Water", "Sewage", "Trash", "Parking"
+        "Electric", "Gas", "Heat", "Hot Water", "Water", "Sewer", "Trash",
+        "Internet", "Cable", "Parking", "Lawn Care", "Snow Removal", "Pool Maintenance",
     ],
     "Unit Features": [
-        "Hardwood Floors", "Air Conditioning", "Dishwasher",
-        "Microwave", "Balcony/Terrace"
+        "Hardwood Floors", "Dishwasher", "Microwave", "Fireplace", "Views", "Large Windows",
     ],
     "Building Amenities": [
-        "Extra Storage", "Rooftop Space", "Common Lounge",
-        "Barbecue Area", "Firepits", "Gym", "Pool"
+        "Rooftop Space", "Common Lounge", "Barbecue Area", "Firepits", "Gym", "Pool",
+        "Doorman", "Elevator", "Game Room", "Theater Room", "Playground", "Tennis Court",
+    ],
+    "Private Outdoor Space": [
+        "Balcony", "Patio", "Deck", "Porch", "Private Yard", "Fenced Yard", "Other",
+    ],
+    "Storage": [
+        "Closet", "Walk-in Closet", "Basement", "Attic", "Garage", "Shed", "Locker",
+        "Pantry", "Outdoor Storage", "Bike Storage", "Other",
+    ],
+    "Rooms": [
+        "Living Room", "Dining Room", "Kitchen", "Eat-in Kitchen", "Foyer", "Den",
+        "Family Room", "TV Room", "Office", "Library", "Sunroom", "Mudroom",
+        "Laundry Room", "Finished Basement", "Bonus Room", "Playroom", "Other",
     ],
     "Pet Amenities": [
-        "Pet Washing", "Dog Park"
+        "Pet Washing", "Dog Park",
     ],
     "Close By": [
-        "Subway", "Bus Stop", "Grocery Store", "Park",
-        "Restaurants", "Pharmacy", "Coffee Shop", "Gym", "School"
+        "Subway", "Bus Stop", "Grocery Store", "Park", "Restaurants", "Pharmacy",
+        "Coffee Shop", "Gym", "School", "Hospital", "Library", "Dog Park",
+        "Farmer's Market", "Shopping Mall", "Highway Access",
     ],
 }
 
@@ -184,14 +199,14 @@ LISTINGS_COLUMNS = [
     "topFloor",
     "cornerUnit",
     # Unit Details
-    "unitType",
+    "propertyType",
     "bedrooms",
     "bathrooms",
     "squareFootage",
     "furnished",
     "leaseLength",
     "dateAvailable",
-    "acType",
+    "coolingType",
     "laundry",
     "parkingType",
     # Contact
@@ -241,6 +256,18 @@ LISTINGS_COLUMNS = [
     # Notes
     "pros",
     "cons",
+    # New fields — Build 3.2.11
+    "numberOfFloors",
+    "heatingType",
+    "shortTermAvailable",
+    "rentersInsuranceRequired",
+    "petFee",
+    "storageRent",
+    "brokerFee",
+    "moveInFee",
+    "privateOutdoorSpaceTypes",
+    "storageTypes",
+    "roomTypes",
 ]
 
 # -------------------------------------------------------------------
@@ -254,6 +281,8 @@ BOOLEAN_FIELDS = [
     "furnished",
     "noBoardApproval",
     "noBrokerFee",
+    "shortTermAvailable",
+    "rentersInsuranceRequired",
 ]
 
 NUMERIC_FIELDS = [
@@ -280,12 +309,19 @@ NUMERIC_FIELDS = [
     "middleDistance",
     "highRating",
     "highDistance",
+    "numberOfFloors",
+    "petFee",
+    "storageRent",
+    "brokerFee",
+    "moveInFee",
 ]
 
 DROPDOWN_FIELDS = [
     "status",
-    "unitType",
-    "acType",
+    "propertyType",
+    "coolingType",
+    "heatingType",
+    "numberOfFloors",
     "laundry",
     "parkingType",
     "listingSite",
@@ -297,6 +333,9 @@ CATEGORY_FIELDS = [
     "buildingAmenities",
     "petAmenities",
     "closeBy",
+    "privateOutdoorSpaceTypes",
+    "storageTypes",
+    "roomTypes",
 ]
 
 CHILDREN_GATED_FIELDS = [
@@ -329,7 +368,7 @@ BASELINE_COMPARED_FIELDS = [
     "squareFootage",
     "commuteTime",
     "walkScore",
-    "acType",
+    "coolingType",
     "laundry",
     "parkingType",
     "noBoardApproval",
@@ -346,7 +385,7 @@ CARD_FIELDS = [
     "bedrooms",
     "bathrooms",
     "squareFootage",
-    "unitType",
+    "propertyType",
     "floorNumber",
     "cornerUnit",
     "topFloor",

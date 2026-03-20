@@ -1,5 +1,5 @@
 # =============================================================
-# helpers.py — PreferredHome API Build 3.2.1
+# helpers.py — PreferredHome API Build 3.2.11
 # Shared helper functions.
 # All field references use camelCase to match LISTINGS_COLUMNS.
 # =============================================================
@@ -11,7 +11,7 @@ from preferredhome_api.core.config_constants import (
     NUMERIC_FIELDS,
     CATEGORY_FIELDS,
     BASELINE_DEFAULTS,
-    AC_TYPE_OPTIONS,
+    COOLING_TYPE_OPTIONS,
     LAUNDRY_OPTIONS,
     PARKING_OPTIONS,
 )
@@ -209,8 +209,8 @@ def get_comparison_color(field: str, value, baseline: dict) -> str:
         except (ValueError, TypeError):
             return "gray"
 
-    if field == "acType":
-        ranking_str = baseline.get("AC Type Ranking", ",".join(AC_TYPE_OPTIONS))
+    if field == "coolingType":
+        ranking_str = baseline.get("AC Type Ranking", ",".join(COOLING_TYPE_OPTIONS))
         return _ranked_color(str(value), ranking_str)
 
     if field == "laundry":
