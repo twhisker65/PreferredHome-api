@@ -1,6 +1,13 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.2.2.1
-# FastAPI entry point. All NaN sanitization applied here.
+# main.py — PreferredHome API Build 3.2.13
+# Changes from 3.2.2.2:
+# - Added _safe_num() helper for safe numeric extraction.
+# - Added _inject_calculated_totals(): calculates totalMonthly and
+#   totalUpfront from the incoming payload before saving.
+# - listings_post() and listings_put() now call _inject_calculated_totals()
+#   after first sanitization, before key mapping.
+# - Version string updated to 3.2.13.
+# All other logic unchanged.
 # =============================================================
 
 from __future__ import annotations
@@ -27,7 +34,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id
 
-app = FastAPI(title="PreferredHome API", version="3.2.2.2")
+app = FastAPI(title="PreferredHome API", version="3.2.13")
 
 settings = get_settings()
 app.add_middleware(
@@ -150,12 +157,58 @@ def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # -------------------------------------------------------------------
+# AUTO-CALCULATED TOTALS — Build 3.2.13
+# Injected into the camelCase payload before key mapping so that
+# totalMonthly and totalUpfront are always stored correctly.
+# -------------------------------------------------------------------
+
+def _safe_num(payload: Dict[str, Any], key: str) -> float:
+    """Safely extract a numeric value from a payload dict for calculation."""
+    v = payload.get(key, "")
+    try:
+        return float(v) if v not in ("", None) else 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Calculate totalMonthly and totalUpfront from the payload fields and
+    inject them back into the payload before it is saved to the sheet.
+
+    totalMonthly = baseRent + petFee + storageRent + amenityFee +
+                   adminFee + utilityFee + parkingFee + otherFee
+
+    totalUpfront = securityDeposit + applicationFee + brokerFee + moveInFee
+    """
+    total_monthly = (
+        _safe_num(payload, "baseRent") +
+        _safe_num(payload, "petFee") +
+        _safe_num(payload, "storageRent") +
+        _safe_num(payload, "amenityFee") +
+        _safe_num(payload, "adminFee") +
+        _safe_num(payload, "utilityFee") +
+        _safe_num(payload, "parkingFee") +
+        _safe_num(payload, "otherFee")
+    )
+    total_upfront = (
+        _safe_num(payload, "securityDeposit") +
+        _safe_num(payload, "applicationFee") +
+        _safe_num(payload, "brokerFee") +
+        _safe_num(payload, "moveInFee")
+    )
+    payload["totalMonthly"] = round(total_monthly, 2)
+    payload["totalUpfront"] = round(total_upfront, 2)
+    return payload
+
+
+# -------------------------------------------------------------------
 # HEALTH
 # -------------------------------------------------------------------
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.2.2"}
+    return {"ok": "PreferredHome API 3.2.13"}
 
 
 # -------------------------------------------------------------------
@@ -183,6 +236,9 @@ def listings_post(payload: Dict[str, Any]):
         # Sanitize camelCase payload from mobile before mapping
         payload = _sanitize_payload(payload)
 
+        # Inject calculated totals (totalMonthly + totalUpfront)
+        payload = _inject_calculated_totals(payload)
+
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
 
         # Ensure id is always lowercase
@@ -207,6 +263,9 @@ def listings_put(listing_id: str, payload: Dict[str, Any]):
 
         # Sanitize camelCase payload from mobile before mapping
         payload = _sanitize_payload(payload)
+
+        # Inject calculated totals (totalMonthly + totalUpfront)
+        payload = _inject_calculated_totals(payload)
 
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
 
