@@ -1,11 +1,96 @@
-# preferredhome_api/core/config_constants.py — Build 3.2.13
-# Change: totalUpfront added to LISTINGS_COLUMNS (after totalMonthly) and NUMERIC_FIELDS.
-# All other constants unchanged.
+# =============================================================
+# config_constants.py — PreferredHome API Build 3.2.13.1
+# Based on Build 3.2.11 original — identical except:
+#   1. "totalUpfront" added to LISTINGS_COLUMNS (after "totalMonthly")
+#   2. "totalUpfront" added to NUMERIC_FIELDS
+# No other changes. PARKING_OPTIONS unchanged.
+# =============================================================
+
+# -------------------------------------------------------------------
+# GOOGLE SHEETS SETTINGS
+# -------------------------------------------------------------------
+SPREADSHEET_NAME = "Apartment Listings"
+
+TAB_LISTINGS   = "listings"
+TAB_BASELINE   = "baseline"
+TAB_CATEGORIES = "categories"
+
+# -------------------------------------------------------------------
+# STATUS OPTIONS — 10-status pipeline (matches mobile exactly)
+# -------------------------------------------------------------------
+STATUS_OPTIONS = [
+    "New",
+    "Contacted",
+    "Scheduled",
+    "Viewed",
+    "Shortlisted",
+    "Applied",
+    "Approved",
+    "Signed",
+    "Rejected",
+    "Archived",
+]
+
+STATUS_COLORS = {
+    "New":        "#2563EB",
+    "Contacted":  "#2563EB",
+    "Scheduled":  "#2563EB",
+    "Viewed":     "#2563EB",
+    "Shortlisted":"#D97706",
+    "Applied":    "#2563EB",
+    "Approved":   "#10B981",
+    "Signed":     "#0D9488",
+    "Rejected":   "#EF4444",
+    "Archived":   "#475569",
+    "Unknown":    "#475569",
+}
+
+STATUS_TEXT_COLORS = {
+    "New":        "#ffffff",
+    "Contacted":  "#ffffff",
+    "Scheduled":  "#ffffff",
+    "Viewed":     "#ffffff",
+    "Shortlisted":"#ffffff",
+    "Applied":    "#ffffff",
+    "Approved":   "#ffffff",
+    "Signed":     "#ffffff",
+    "Rejected":   "#ffffff",
+    "Archived":   "#ffffff",
+    "Unknown":    "#ffffff",
+}
+
+# -------------------------------------------------------------------
+# DROPDOWN OPTIONS
+# -------------------------------------------------------------------
+PROPERTY_TYPE_OPTIONS = ["Apartment", "Condo", "Co-op", "Townhouse", "House", "Other"]
+COOLING_TYPE_OPTIONS  = ["Central Air", "Wall Unit", "Window Unit", "None"]
+HEATING_TYPE_OPTIONS  = ["Forced Air", "Baseboard", "Radiant", "Steam", "Electric", "Natural Gas", "Oil", "Propane", "None"]
+LAUNDRY_OPTIONS       = ["In-Unit", "On Floor", "In Building", "None"]
+PARKING_OPTIONS       = ["Shared Garage", "Shared Lot", "Covered Space", "Attached Garage", "Detached Garage", "Driveway", "Carport", "Street", "None", "Other"]
+NUMBER_OF_FLOORS_OPTIONS = ["1", "2", "3", "4", "5+", "Unknown"]
+
+LISTING_SITE_OPTIONS = [
+    "Zillow",
+    "StreetEasy",
+    "Apartments.com",
+    "Realtor.com",
+    "Trulia",
+    "Compass",
+    "Other",
+]
+
+LISTING_SITE_URL_KEYWORDS = {
+    "zillow.com":       "Zillow",
+    "streeteasy.com":   "StreetEasy",
+    "apartments.com":   "Apartments.com",
+    "realtor.com":      "Realtor.com",
+    "trulia.com":       "Trulia",
+    "compass.com":      "Compass",
+}
 
 # -------------------------------------------------------------------
 # LISTINGS COLUMNS (camelCase — matches Google Sheet column headers)
 # -------------------------------------------------------------------
-
 LISTINGS_COLUMNS = [
     # Status & ID
     "id",
@@ -191,7 +276,6 @@ PETS_GATED_FIELDS = [
     "petAmenities",
 ]
 
-# Fields used in baseline comparison (Compare screen)
 BASELINE_COMPARED_FIELDS = [
     "baseRent",
     "squareFootage",
@@ -204,7 +288,6 @@ BASELINE_COMPARED_FIELDS = [
     "noBrokerFee",
 ]
 
-# Fields shown on listing cards
 CARD_FIELDS = [
     "buildingName",
     "streetAddress",
@@ -229,68 +312,6 @@ CARD_FIELDS = [
     "utilityFee",
     "otherFee",
 ]
-
-# -------------------------------------------------------------------
-# STATUS OPTIONS
-# -------------------------------------------------------------------
-STATUS_OPTIONS = [
-    "New",
-    "Contacted",
-    "Scheduled",
-    "Viewed",
-    "Shortlisted",
-    "Applied",
-    "Approved",
-    "Signed",
-    "Rejected",
-    "Archived",
-]
-
-STATUS_COLORS = {
-    "New":        "#3B82F6",
-    "Contacted":  "#F59E0B",
-    "Scheduled":  "#3B82F6",
-    "Viewed":     "#F59E0B",
-    "Shortlisted":"#3B82F6",
-    "Applied":    "#3B82F6",
-    "Approved":   "#10B981",
-    "Signed":     "#14B8A6",
-    "Rejected":   "#EF4444",
-    "Archived":   "#6B7280",
-}
-
-# -------------------------------------------------------------------
-# PROPERTY TYPE OPTIONS
-# -------------------------------------------------------------------
-PROPERTY_TYPE_OPTIONS = ["Apartment", "Condo", "Co-op", "Townhouse", "House"]
-
-# -------------------------------------------------------------------
-# DROPDOWN OPTIONS
-# -------------------------------------------------------------------
-COOLING_TYPE_OPTIONS  = ["Central Air", "Wall Unit", "Window Unit", "None"]
-HEATING_TYPE_OPTIONS  = ["Forced Air", "Baseboard", "Radiant", "Steam", "Electric", "Natural Gas", "Oil", "Propane", "None"]
-LAUNDRY_OPTIONS       = ["None", "In-Unit", "On Floor", "In Building"]
-PARKING_TYPE_OPTIONS  = ["Shared Garage", "Shared Lot", "Covered Space", "Attached Garage", "Detached Garage", "Driveway", "Carport", "Street", "None", "Other"]
-NUMBER_OF_FLOORS_OPTIONS = ["1", "2", "3", "4", "5+", "Unknown"]
-
-LISTING_SITE_OPTIONS = [
-    "Zillow",
-    "StreetEasy",
-    "Apartments.com",
-    "Realtor.com",
-    "Trulia",
-    "Compass",
-    "Other",
-]
-
-LISTING_SITE_URL_KEYWORDS = {
-    "zillow.com":       "Zillow",
-    "streeteasy.com":   "StreetEasy",
-    "apartments.com":   "Apartments.com",
-    "realtor.com":      "Realtor.com",
-    "trulia.com":       "Trulia",
-    "compass.com":      "Compass",
-}
 
 # -------------------------------------------------------------------
 # PROFILE TOGGLES
