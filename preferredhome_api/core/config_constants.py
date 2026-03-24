@@ -1,9 +1,9 @@
 # =============================================================
-# config_constants.py — PreferredHome API Build 3.2.13.1
-# Based on Build 3.2.11 original — identical except:
-#   1. "totalUpfront" added to LISTINGS_COLUMNS (after "totalMonthly")
-#   2. "totalUpfront" added to NUMERIC_FIELDS
-# No other changes. PARKING_OPTIONS unchanged.
+# config_constants.py — PreferredHome API Build 3.2.14
+# Based on Build 3.2.13.1 — identical except:
+#   LISTING_SITE_OPTIONS updated to 13-item list
+#   LISTING_SITE_URL_KEYWORDS updated to match new list
+# No other changes.
 # =============================================================
 
 # -------------------------------------------------------------------
@@ -62,30 +62,45 @@ STATUS_TEXT_COLORS = {
 # -------------------------------------------------------------------
 # DROPDOWN OPTIONS
 # -------------------------------------------------------------------
-PROPERTY_TYPE_OPTIONS = ["Apartment", "Condo", "Co-op", "Townhouse", "House", "Other"]
-COOLING_TYPE_OPTIONS  = ["Central Air", "Wall Unit", "Window Unit", "None"]
-HEATING_TYPE_OPTIONS  = ["Forced Air", "Baseboard", "Radiant", "Steam", "Electric", "Natural Gas", "Oil", "Propane", "None"]
-LAUNDRY_OPTIONS       = ["In-Unit", "On Floor", "In Building", "None"]
-PARKING_OPTIONS       = ["Shared Garage", "Shared Lot", "Covered Space", "Attached Garage", "Detached Garage", "Driveway", "Carport", "Street", "None", "Other"]
+PROPERTY_TYPE_OPTIONS    = ["Apartment", "Condo", "Co-op", "Townhouse", "House", "Other"]
+COOLING_TYPE_OPTIONS     = ["Central Air", "Wall Unit", "Window Unit", "None"]
+HEATING_TYPE_OPTIONS     = ["Forced Air", "Baseboard", "Radiant", "Steam", "Electric", "Natural Gas", "Oil", "Propane", "None"]
+LAUNDRY_OPTIONS          = ["In-Unit", "On Floor", "In Building", "None"]
+PARKING_OPTIONS          = ["Shared Garage", "Shared Lot", "Covered Space", "Attached Garage", "Detached Garage", "Driveway", "Carport", "Street", "None", "Other"]
 NUMBER_OF_FLOORS_OPTIONS = ["1", "2", "3", "4", "5+", "Unknown"]
 
+# Listing sites — updated Build 3.2.14 (13-item list, matches mobile exactly)
 LISTING_SITE_OPTIONS = [
     "Zillow",
-    "StreetEasy",
-    "Apartments.com",
     "Realtor.com",
+    "Redfin",
+    "Homes.com",
+    "Apartments.com",
+    "StreetEasy",
+    "HotPads",
     "Trulia",
-    "Compass",
+    "Rent.com",
+    "Apartment Finder",
+    "Rentals.com",
+    "MLS / Broker",
     "Other",
 ]
 
+# URL keywords for server-side listing site auto-detection — updated Build 3.2.14
+# Checked in order — first match wins.
 LISTING_SITE_URL_KEYWORDS = {
-    "zillow.com":       "Zillow",
-    "streeteasy.com":   "StreetEasy",
-    "apartments.com":   "Apartments.com",
-    "realtor.com":      "Realtor.com",
-    "trulia.com":       "Trulia",
-    "compass.com":      "Compass",
+    "zillow.com":          "Zillow",
+    "realtor.com":         "Realtor.com",
+    "redfin.com":          "Redfin",
+    "homes.com":           "Homes.com",
+    "apartments.com":      "Apartments.com",
+    "streeteasy.com":      "StreetEasy",
+    "hotpads.com":         "HotPads",
+    "trulia.com":          "Trulia",
+    "rent.com":            "Rent.com",
+    "apartmentfinder.com": "Apartment Finder",
+    "rentals.com":         "Rentals.com",
+    "mls":                 "MLS / Broker",
 }
 
 # -------------------------------------------------------------------
@@ -301,80 +316,22 @@ CARD_FIELDS = [
     "floorNumber",
     "cornerUnit",
     "topFloor",
-    "listingSite",
     "status",
     "preferred",
-    "photoUrl",
-    "listingUrl",
-    "parkingFee",
-    "amenityFee",
-    "adminFee",
-    "utilityFee",
-    "otherFee",
+    "id",
 ]
 
 # -------------------------------------------------------------------
-# PROFILE TOGGLES
+# BASELINE DEFAULTS — used when no baseline entry exists in the sheet
 # -------------------------------------------------------------------
-PROFILE_TOGGLES = {
-    "children": {
-        "label":       "Children",
-        "default":     False,
-        "description": "Show school ratings and information",
-    },
-    "pets": {
-        "label":       "Pets",
-        "default":     False,
-        "description": "Show pet amenities category",
-    },
-    "car": {
-        "label":       "Car",
-        "default":     False,
-        "description": "Show parking type and parking fee",
-    },
-}
-
-# -------------------------------------------------------------------
-# BASELINE SETTINGS
-# -------------------------------------------------------------------
-BASELINE_SETTINGS = [
-    "Max Monthly Rent",
-    "Min Square Footage",
-    "Max Commute Time",
-    "Min Walk Score",
-    "AC Type Ranking",
-    "Laundry Ranking",
-    "Parking Ranking",
-    "Board Approval Required",
-    "Broker Fee Acceptable",
-]
-
 BASELINE_DEFAULTS = {
-    "Max Monthly Rent":        "2500",
-    "Min Square Footage":      "700",
-    "Max Commute Time":        "30",
-    "Min Walk Score":          "70",
-    "AC Type Ranking":         "Central,Wall,Window,None",
-    "Laundry Ranking":         "In-Unit,On Floor,In Building,None",
-    "Parking Ranking":         "Covered,Uncovered,None",
-    "Board Approval Required": "False",
-    "Broker Fee Acceptable":   "False",
+    "baseRent":      0,
+    "squareFootage": 0,
+    "commuteTime":   0,
+    "walkScore":     0,
+    "coolingType":   "None",
+    "laundry":       "None",
+    "parkingType":   "None",
+    "noBoardApproval": False,
+    "noBrokerFee":     False,
 }
-
-# -------------------------------------------------------------------
-# COMPARISON COLOR THRESHOLDS
-# -------------------------------------------------------------------
-COMPARISON_COLORS = {
-    "green":  "#10B981",
-    "yellow": "#D97706",
-    "red":    "#EF4444",
-    "gray":   "#475569",
-}
-
-# -------------------------------------------------------------------
-# APP SETTINGS
-# -------------------------------------------------------------------
-APP_TITLE = "PreferredHome"
-APP_ICON  = "🏠"
-NAV_PAGES = ["Home", "Listings", "Add", "Compare", "Profile"]
-NAV_ICONS = ["🏠", "🏢", "➕", "⚖️", "👤"]
