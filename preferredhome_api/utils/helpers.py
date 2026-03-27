@@ -1,10 +1,19 @@
 # =============================================================
-# helpers.py — PreferredHome API Build 3.2.11
-# Shared helper functions.
-# All field references use camelCase to match LISTINGS_COLUMNS.
+# helpers.py — PreferredHome API Build 3.2.15
+# Changes from 3.2.11:
+# - Added os, requests, datetime imports for commute calculation.
+# - Added _get_next_monday_timestamp() — converts a time string to
+#   next Monday Unix timestamp for Google Maps departure_time param.
+# - Added calculate_commute_time() — calls Google Maps Distance
+#   Matrix API and returns commute duration in minutes or None.
+# All existing functions unchanged.
 # =============================================================
 
+import os
 import uuid
+import requests
+from datetime import datetime, timedelta
+
 from preferredhome_api.core.config_constants import (
     LISTING_SITE_URL_KEYWORDS,
     BOOLEAN_FIELDS,
@@ -97,138 +106,122 @@ def clean_row(row: dict) -> dict:
     to match Google Sheets boolean convention.
     """
     cleaned = {}
-    for key, value in row.items():
-        if key in BOOLEAN_FIELDS:
-            # All-caps TRUE/FALSE required by Google Sheets and the API contract
-            cleaned[key] = "TRUE" if value else "FALSE"
-        elif key in NUMERIC_FIELDS:
-            if value is None or value == "":
-                cleaned[key] = ""
+    for k, v in row.items():
+        if k in BOOLEAN_FIELDS:
+            if isinstance(v, bool):
+                cleaned[k] = "TRUE" if v else "FALSE"
+            elif isinstance(v, str) and v.strip().upper() in ("TRUE", "1", "YES"):
+                cleaned[k] = "TRUE"
+            else:
+                cleaned[k] = "FALSE"
+        elif k in NUMERIC_FIELDS:
+            if v in (None, "", "null"):
+                cleaned[k] = ""
             else:
                 try:
-                    cleaned[key] = str(float(value))
+                    f = float(str(v))
+                    import math
+                    if math.isnan(f) or math.isinf(f):
+                        cleaned[k] = ""
+                    else:
+                        cleaned[k] = int(f) if f == int(f) else f
                 except (ValueError, TypeError):
-                    cleaned[key] = ""
-        elif key in CATEGORY_FIELDS:
-            if isinstance(value, list):
-                cleaned[key] = ", ".join(str(v) for v in value if v)
+                    cleaned[k] = ""
+        elif k in CATEGORY_FIELDS:
+            if isinstance(v, list):
+                cleaned[k] = ", ".join(str(x) for x in v if x)
+            elif isinstance(v, str):
+                cleaned[k] = v
             else:
-                cleaned[key] = str(value) if value else ""
+                cleaned[k] = ""
         else:
-            cleaned[key] = str(value).strip() if value is not None else ""
+            cleaned[k] = "" if v is None else str(v)
     return cleaned
 
 
-def parse_row(row: dict) -> dict:
+# -------------------------------------------------------------------
+# COMMUTE CALCULATION — Build 3.2.15
+# -------------------------------------------------------------------
+
+def _get_next_monday_timestamp(time_str: str) -> int:
     """
-    Parses a raw row from Google Sheets into Python types.
-    Uses camelCase keys matching LISTINGS_COLUMNS.
-    Accepts both 'TRUE'/'FALSE' (all caps) and 'True'/'False' (mixed case)
-    for backwards compatibility with older sheet data.
+    Returns a Unix timestamp for the next upcoming Monday at the given time.
+    time_str format: "8:30 AM" or "11:00 PM" (matches TIME_OPTIONS in mobile).
+    Defaults to Monday 8:00 AM if blank or unparseable.
+    Always returns a future timestamp — never today even if today is Monday.
     """
-    parsed = {}
-    for key, value in row.items():
-        if key in BOOLEAN_FIELDS:
-            parsed[key] = str(value).strip().lower() == "true"
-        elif key in NUMERIC_FIELDS:
+    now = datetime.now()
+    # days_ahead: positive number of days until next Monday
+    days_ahead = (7 - now.weekday()) % 7
+    if days_ahead == 0:
+        days_ahead = 7  # if today is Monday, use next Monday
+    next_monday = now + timedelta(days=days_ahead)
+
+    hour, minute = 8, 0  # default
+    if time_str and time_str.strip():
+        for fmt in ("%I:%M %p", "%I:%M%p"):
             try:
-                parsed[key] = float(value) if value != "" else None
-            except (ValueError, TypeError):
-                parsed[key] = None
-        elif key in CATEGORY_FIELDS:
-            if isinstance(value, list):
-                parsed[key] = value
-            elif value:
-                parsed[key] = [v.strip() for v in str(value).split(",") if v.strip()]
-            else:
-                parsed[key] = []
-        else:
-            parsed[key] = str(value).strip() if value is not None else ""
-    return parsed
+                t = datetime.strptime(time_str.strip().upper(), fmt.upper())
+                hour, minute = t.hour, t.minute
+                break
+            except ValueError:
+                continue
+
+    next_monday = next_monday.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return int(next_monday.timestamp())
 
 
-# -------------------------------------------------------------------
-# BASELINE COMPARISON (camelCase field names)
-# -------------------------------------------------------------------
-
-def _ranked_color(value: str, ranking_str: str) -> str:
+def calculate_commute_time(
+    work_address: str,
+    listing_address: str,
+    commute_method: str,
+    departure_time: str,
+) -> int | None:
     """
-    Returns 'green', 'yellow', or 'red' based on rank position.
-    First item in ranking = most preferred (green).
+    Calls Google Maps Distance Matrix API to calculate commute duration.
+    Returns integer minutes, or None if the call fails or address is invalid.
+
+    commute_method: "Walk" | "Drive" | "Transit" | "Bike"
+    departure_time: time string like "8:30 AM", or "" to use default Monday 8 AM
     """
-    ranking = [r.strip() for r in ranking_str.split(",") if r.strip()]
-    if not ranking or not value:
-        return "gray"
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    mode_map = {
+        "Drive":   "driving",
+        "Walk":    "walking",
+        "Transit": "transit",
+        "Bike":    "bicycling",
+    }
+    google_mode = mode_map.get(commute_method, "transit")
+
+    params: dict = {
+        "origins":      work_address,
+        "destinations": listing_address,
+        "mode":         google_mode,
+        "key":          api_key,
+    }
+
+    # Departure time applies to driving (traffic) and transit (schedule).
+    # Walk and Bike ignore it per Google Maps API behaviour.
+    if google_mode in ("driving", "transit"):
+        params["departure_time"] = _get_next_monday_timestamp(departure_time)
+
     try:
-        pos = ranking.index(value)
-    except ValueError:
-        return "gray"
-    third = max(1, len(ranking) // 3)
-    if pos < third:
-        return "green"
-    elif pos < third * 2:
-        return "yellow"
-    else:
-        return "red"
-
-
-def get_comparison_color(field: str, value, baseline: dict) -> str:
-    """
-    Returns 'green', 'yellow', 'red', or 'gray' for a field value
-    compared against baseline settings.
-    Uses camelCase field names matching LISTINGS_COLUMNS.
-    """
-    if value is None or value == "" or value == []:
-        return "gray"
-
-    if field == "baseRent":
-        try:
-            max_rent = float(baseline.get("Max Monthly Rent", 0))
-            return "green" if float(value) <= max_rent else "red"
-        except (ValueError, TypeError):
-            return "gray"
-
-    if field == "squareFootage":
-        try:
-            min_sqft = float(baseline.get("Min Square Footage", 0))
-            return "green" if float(value) >= min_sqft else "red"
-        except (ValueError, TypeError):
-            return "gray"
-
-    if field == "commuteTime":
-        try:
-            max_commute = float(baseline.get("Max Commute Time", 0))
-            return "green" if float(value) <= max_commute else "red"
-        except (ValueError, TypeError):
-            return "gray"
-
-    if field == "walkScore":
-        try:
-            min_walk = float(baseline.get("Min Walk Score", 0))
-            return "green" if float(value) >= min_walk else "red"
-        except (ValueError, TypeError):
-            return "gray"
-
-    if field == "coolingType":
-        ranking_str = baseline.get("AC Type Ranking", ",".join(COOLING_TYPE_OPTIONS))
-        return _ranked_color(str(value), ranking_str)
-
-    if field == "laundry":
-        ranking_str = baseline.get("Laundry Ranking", ",".join(LAUNDRY_OPTIONS))
-        return _ranked_color(str(value), ranking_str)
-
-    if field == "parkingType":
-        ranking_str = baseline.get("Parking Ranking", ",".join(PARKING_OPTIONS))
-        return _ranked_color(str(value), ranking_str)
-
-    if field == "noBoardApproval":
-        required = str(baseline.get("Board Approval Required", "False")).strip().lower() == "true"
-        listing_val = str(value).strip().lower() == "true"
-        return "green" if required == listing_val else "red"
-
-    if field == "noBrokerFee":
-        acceptable = str(baseline.get("Broker Fee Acceptable", "False")).strip().lower() == "true"
-        listing_val = str(value).strip().lower() == "true"
-        return "green" if acceptable == listing_val else "red"
-
-    return "gray"
+        resp = requests.get(
+            "https://maps.googleapis.com/maps/api/distancematrix/json",
+            params=params,
+            timeout=10,
+        )
+        data = resp.json()
+        element = data["rows"][0]["elements"][0]
+        if element.get("status") != "OK":
+            return None
+        # Use duration_in_traffic when available (driving with traffic model)
+        dur = element.get("duration_in_traffic") or element.get("duration")
+        if not dur:
+            return None
+        return round(dur["value"] / 60)  # seconds → minutes
+    except Exception:
+        return None
