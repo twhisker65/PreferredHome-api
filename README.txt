@@ -1,64 +1,52 @@
-BUILD 3.2.11A — API Data Model Update
-Repo: twhisker65/PreferredHome-api
-Branch: MAIN
-
-CHANGED FILES
--------------
-preferredhome_api/core/config_constants.py
-preferredhome_api/utils/helpers.py
-
-UNCHANGED FILES (Do Not Touch)
--------------------------------
-main.py
-preferredhome_api/storage/sheets_storage.py
-preferredhome_api/core/models.py
-preferredhome_api/core/settings.py
-All other files in the repo
+PreferredHome — Build 3.2.15.2 Hotfix
+======================================
+Diagnostic logging — helpers.py only.
+Generated: March 2026
 
 WHAT CHANGED
 ------------
+API repo only. No mobile changes.
 
-config_constants.py
-  - LISTINGS_COLUMNS: unitType renamed to propertyType; acType renamed to coolingType;
-    11 new fields added at end: numberOfFloors, heatingType, shortTermAvailable,
-    rentersInsuranceRequired, petFee, storageRent, brokerFee, moveInFee,
-    privateOutdoorSpaceTypes, storageTypes, roomTypes
-  - BOOLEAN_FIELDS: added shortTermAvailable, rentersInsuranceRequired
-  - NUMERIC_FIELDS: added numberOfFloors, petFee, storageRent, brokerFee, moveInFee
-  - DROPDOWN_FIELDS: unitType/acType removed; propertyType, coolingType, heatingType,
-    numberOfFloors added
-  - CATEGORY_FIELDS: added privateOutdoorSpaceTypes, storageTypes, roomTypes
-  - CATEGORY_DEFINITIONS: full replacement with expanded option lists
-  - CARD_FIELDS: unitType renamed to propertyType
-  - BASELINE_COMPARED_FIELDS: acType renamed to coolingType
-  - Dropdown constants: UNIT_TYPE_OPTIONS replaced by PROPERTY_TYPE_OPTIONS;
-    AC_TYPE_OPTIONS replaced by COOLING_TYPE_OPTIONS; HEATING_TYPE_OPTIONS added;
-    PARKING_OPTIONS updated; NUMBER_OF_FLOORS_OPTIONS added
+  preferredhome_api/utils/helpers.py
+    — Added print() statements inside calculate_commute():
+        [commute] api_key present=True/False
+        [commute] origin=... dest=... mode=...
+        [commute] status=... rows=...
+        [commute] element_status=...
+        [commute] result=N minutes  (or exception message)
 
-helpers.py (Option A — surgical import fix)
-  - Import: AC_TYPE_OPTIONS renamed to COOLING_TYPE_OPTIONS
-  - get_comparison_color(): field check "acType" renamed to "coolingType";
-    AC_TYPE_OPTIONS reference renamed to COOLING_TYPE_OPTIONS
+  main.py
+    — Version bump to 3.2.15.2 only. No logic changes.
 
-DEPLOY STEPS
-------------
-1. Copy both changed files into your local PreferredHome-api repo at the exact paths shown above
-2. Commit via GitHub Desktop using the commit message below
-3. Push to GitHub
-4. Render dashboard → Manual Deploy → Deploy latest commit
-5. Wait ~60 seconds for green Live status
+PURPOSE
+-------
+recalculate-all fires and returns 200 OK but commute times do not update.
+These logs will show exactly what Google Maps returns so the root cause
+can be identified and fixed.
 
-VERIFY
-------
-6. Open https://preferredhome-api.onrender.com/health — confirm healthy response
-7. Open https://preferredhome-api.onrender.com/listings — confirm listings return without error
-8. Open the app in Expo Go — confirm existing listings display correctly
+DEPLOY STEPS — API ONLY
+------------------------
+1. Copy these 2 files into PreferredHome-api repo (overwrite existing):
+     preferredhome_api/utils/helpers.py
+     main.py
+2. Commit in GitHub Desktop:
+     Build 3.2.15.2 Hotfix - add commute diagnostic logging
+3. Push to MAIN
+4. Render: "Deploy latest commit"
+5. Verify: https://preferredhome-api.onrender.com/health
+   Expected: { "ok": "PreferredHome API 3.2.15.2" }
+
+AFTER DEPLOYING
+---------------
+1. Open Profile → change Work Address → close panel
+2. Immediately check Render Logs
+3. Look for lines starting with [commute]
+4. Share the log output
 
 COMMIT MESSAGE
 --------------
-Build 3.2.11A — API data model update: property type expansion, 11 new fields, rename unitType/acType
+Build 3.2.15.2 Hotfix - add commute diagnostic logging
 
-EXPO RESTART (Part B only — not needed for Part A)
---------------
-cd C:\Users\twhis\OneDrive\Documents\GitHub\PreferredHome-mobile
-npx expo start --tunnel --clear
+RENDER HEALTH CHECK
+-------------------
+https://preferredhome-api.onrender.com/health

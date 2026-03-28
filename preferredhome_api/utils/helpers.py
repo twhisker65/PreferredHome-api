@@ -139,6 +139,7 @@ def calculate_commute(
     Origin = work_address, Destination = listing_address.
     """
     api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+    print(f"[commute] api_key present={bool(api_key)}")
     if not api_key:
         return None
 
@@ -159,6 +160,7 @@ def calculate_commute(
     if mode in ("driving", "transit"):
         params["departure_time"] = _next_monday_timestamp(departure_time)
 
+    print(f"[commute] origin={work_address!r} dest={listing_address!r} mode={mode}")
     try:
         resp = requests.get(
             "https://maps.googleapis.com/maps/api/distancematrix/json",
@@ -166,16 +168,22 @@ def calculate_commute(
             timeout=10,
         )
         data = resp.json()
+        print(f"[commute] status={data.get('status')} rows={data.get('rows')}")
         element = data["rows"][0]["elements"][0]
-        if element.get("status") != "OK":
+        elem_status = element.get("status")
+        print(f"[commute] element_status={elem_status}")
+        if elem_status != "OK":
             return None
         # Prefer duration_in_traffic for driving (real traffic estimate).
         if "duration_in_traffic" in element:
             seconds = element["duration_in_traffic"]["value"]
         else:
             seconds = element["duration"]["value"]
-        return max(1, round(seconds / 60))
-    except Exception:
+        mins = max(1, round(seconds / 60))
+        print(f"[commute] result={mins} minutes")
+        return mins
+    except Exception as e:
+        print(f"[commute] exception: {e}")
         return None
 
 

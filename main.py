@@ -1,5 +1,5 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.2.15.1 Hotfix
+# main.py — PreferredHome API Build 3.2.15.2 Hotfix
 # Reverted inline commute calculation from POST/PUT handlers.
 # Restored: POST /commute/calculate/{listing_id} as standalone endpoint.
 # Kept: POST /commute/recalculate-all (load once, write once).
@@ -30,7 +30,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id, calculate_commute
 
-app = FastAPI(title="PreferredHome API", version="3.2.15.1")
+app = FastAPI(title="PreferredHome API", version="3.2.15.2")
 
 settings = get_settings()
 app.add_middleware(
@@ -162,7 +162,7 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.15.1"}
+    return {"ok": "PreferredHome API 3.2.15.2"}
 
 
 # -------------------------------------------------------------------
