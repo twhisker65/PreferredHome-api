@@ -30,7 +30,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id, calculate_commute
 
-app = FastAPI(title="PreferredHome API", version="3.2.15.3")
+app = FastAPI(title="PreferredHome API", version="3.2.15.4")
 
 settings = get_settings()
 app.add_middleware(
@@ -162,7 +162,7 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.15.3"}
+    return {"ok": "PreferredHome API 3.2.15.4"}
 
 
 # -------------------------------------------------------------------
@@ -247,9 +247,9 @@ def commute_calculate(listing_id: str, payload: Dict[str, Any]):
         raise HTTPException(status_code=404, detail=f"Listing not found: {listing_id}")
 
     idx = df[mask].index[0]
-    street = str(df.at[idx, "Street Address"] if "Street Address" in df.columns else "").strip()
-    city   = str(df.at[idx, "City"]           if "City"           in df.columns else "").strip()
-    state  = str(df.at[idx, "State"]          if "State"          in df.columns else "").strip()
+    street = str(df.at[idx, "streetAddress"] if "streetAddress" in df.columns else "").strip()
+    city   = str(df.at[idx, "city"]           if "city"           in df.columns else "").strip()
+    state  = str(df.at[idx, "state"]          if "state"          in df.columns else "").strip()
 
     if not street:
         return {"commuteTime": None, "skipped": True, "reason": "no listing address"}
@@ -261,8 +261,8 @@ def commute_calculate(listing_id: str, payload: Dict[str, Any]):
         return {"commuteTime": None, "skipped": True, "reason": "calculation failed"}
 
     # Write back — load once, mutate in memory, write once.
-    if "Commute Time" in df.columns:
-        df.at[idx, "Commute Time"] = mins
+    if "commuteTime" in df.columns:
+        df.at[idx, "commuteTime"] = mins
     df_to_sheet(cfg.TAB_LISTINGS, df)
 
     return {"commuteTime": mins, "skipped": False}
@@ -286,15 +286,15 @@ def commute_recalculate_all(payload: Dict[str, Any]):
         return {"updated": 0, "skipped": 0, "reason": "no work address"}
 
     df = load_listings_df()
-    print(f"[recalc-all] loaded {len(df)} listings")
+    print(f"[recalc-all] loaded {len(df)} listings, columns={list(df.columns)}")
 
     updated = 0
     skipped = 0
 
     for idx in df.index:
-        street = str(df.at[idx, "Street Address"] if "Street Address" in df.columns else "").strip()
-        city   = str(df.at[idx, "City"]           if "City"           in df.columns else "").strip()
-        state  = str(df.at[idx, "State"]          if "State"          in df.columns else "").strip()
+        street = str(df.at[idx, "streetAddress"] if "streetAddress" in df.columns else "").strip()
+        city   = str(df.at[idx, "city"]           if "city"           in df.columns else "").strip()
+        state  = str(df.at[idx, "state"]          if "state"          in df.columns else "").strip()
 
         if not street:
             skipped += 1
@@ -304,8 +304,8 @@ def commute_recalculate_all(payload: Dict[str, Any]):
         mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
 
         if mins is not None:
-            if "Commute Time" in df.columns:
-                df.at[idx, "Commute Time"] = mins
+            if "commuteTime" in df.columns:
+                df.at[idx, "commuteTime"] = mins
             updated += 1
         else:
             skipped += 1
