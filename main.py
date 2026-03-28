@@ -1,7 +1,8 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.2.15
-# Added: commute calculation in POST/PUT handlers.
-# Added: POST /commute/recalculate-all (load once, write once).
+# main.py — PreferredHome API Build 3.2.15.1 Hotfix
+# Reverted inline commute calculation from POST/PUT handlers.
+# Restored: POST /commute/calculate/{listing_id} as standalone endpoint.
+# Kept: POST /commute/recalculate-all (load once, write once).
 # =============================================================
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id, calculate_commute
 
-app = FastAPI(title="PreferredHome API", version="3.2.15")
+app = FastAPI(title="PreferredHome API", version="3.2.15.1")
 
 settings = get_settings()
 app.add_middleware(
@@ -156,30 +157,12 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # -------------------------------------------------------------------
-# COMMUTE HELPER — extract commute profile fields from payload
-# -------------------------------------------------------------------
-
-def _extract_commute_fields(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], str, str, str]:
-    """
-    Pops workAddress, commuteMethod, departureTime from payload (if present).
-    These are profile fields — not listing columns — so they must be removed
-    before the payload is passed to the sheet layer.
-    Returns (cleaned_payload, work_address, commute_method, departure_time).
-    """
-    payload = dict(payload)
-    work_address    = str(payload.pop("workAddress",    "") or "").strip()
-    commute_method  = str(payload.pop("commuteMethod",  "") or "Transit").strip()
-    departure_time  = str(payload.pop("departureTime",  "") or "").strip()
-    return payload, work_address, commute_method, departure_time
-
-
-# -------------------------------------------------------------------
 # HEALTH
 # -------------------------------------------------------------------
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.15"}
+    return {"ok": "PreferredHome API 3.2.15.1"}
 
 
 # -------------------------------------------------------------------
@@ -205,21 +188,6 @@ def listings_post(payload: Dict[str, Any]):
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         payload = _sanitize_payload(payload)
         payload = _inject_calculated_totals(payload)
-
-        # Extract commute profile fields — these are not listing columns.
-        payload, work_address, commute_method, departure_time = _extract_commute_fields(payload)
-
-        # Calculate commute before saving so it goes into the row in one write.
-        if work_address:
-            street = str(payload.get("streetAddress", "") or "").strip()
-            city   = str(payload.get("city",          "") or "").strip()
-            state  = str(payload.get("state",         "") or "").strip()
-            listing_address = ", ".join(p for p in [street, city, state] if p)
-            if listing_address:
-                mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
-                if mins is not None:
-                    payload["commuteTime"] = mins
-
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
         if "id" not in sheet_payload and "ID" not in sheet_payload:
             sheet_payload["id"] = generate_id()
@@ -238,21 +206,6 @@ def listings_put(listing_id: str, payload: Dict[str, Any]):
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         payload = _sanitize_payload(payload)
         payload = _inject_calculated_totals(payload)
-
-        # Extract commute profile fields — these are not listing columns.
-        payload, work_address, commute_method, departure_time = _extract_commute_fields(payload)
-
-        # Calculate commute before saving so it goes into the row in one write.
-        if work_address:
-            street = str(payload.get("streetAddress", "") or "").strip()
-            city   = str(payload.get("city",          "") or "").strip()
-            state  = str(payload.get("state",         "") or "").strip()
-            listing_address = ", ".join(p for p in [street, city, state] if p)
-            if listing_address:
-                mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
-                if mins is not None:
-                    payload["commuteTime"] = mins
-
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
         sheet_payload.pop("ID", None)
         sheet_payload["id"] = listing_id
@@ -275,9 +228,49 @@ def listings_delete(listing_id: str):
 
 
 # -------------------------------------------------------------------
+# COMMUTE — CALCULATE SINGLE LISTING
+# Called after Add/Edit save. Loads listing, calculates, writes once.
+# -------------------------------------------------------------------
+
+@app.post("/commute/calculate/{listing_id}")
+def commute_calculate(listing_id: str, payload: Dict[str, Any]):
+    work_address   = str(payload.get("workAddress",   "") or "").strip()
+    commute_method = str(payload.get("commuteMethod", "") or "Transit").strip()
+    departure_time = str(payload.get("departureTime", "") or "").strip()
+
+    if not work_address:
+        return {"commuteTime": None, "skipped": True, "reason": "no work address"}
+
+    df = load_listings_df()
+    mask = df["id"].astype(str) == str(listing_id)
+    if not mask.any():
+        raise HTTPException(status_code=404, detail=f"Listing not found: {listing_id}")
+
+    idx = df[mask].index[0]
+    street = str(df.at[idx, "Street Address"] if "Street Address" in df.columns else "").strip()
+    city   = str(df.at[idx, "City"]           if "City"           in df.columns else "").strip()
+    state  = str(df.at[idx, "State"]          if "State"          in df.columns else "").strip()
+
+    if not street:
+        return {"commuteTime": None, "skipped": True, "reason": "no listing address"}
+
+    listing_address = ", ".join(p for p in [street, city, state] if p)
+    mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
+
+    if mins is None:
+        return {"commuteTime": None, "skipped": True, "reason": "calculation failed"}
+
+    # Write back — load once, mutate in memory, write once.
+    if "Commute Time" in df.columns:
+        df.at[idx, "Commute Time"] = mins
+    df_to_sheet(cfg.TAB_LISTINGS, df)
+
+    return {"commuteTime": mins, "skipped": False}
+
+
+# -------------------------------------------------------------------
 # COMMUTE — RECALCULATE ALL
 # Load sheet ONCE. Mutate commuteTime in memory. Write ONCE.
-# Never calls update_listing() in a loop.
 # -------------------------------------------------------------------
 
 @app.post("/commute/recalculate-all")
@@ -289,13 +282,11 @@ def commute_recalculate_all(payload: Dict[str, Any]):
     if not work_address:
         return {"updated": 0, "skipped": 0, "reason": "no work address"}
 
-    # Load the full sheet exactly once.
     df = load_listings_df()
 
     updated = 0
     skipped = 0
 
-    # Iterate rows — calculate commute in memory, no writes inside this loop.
     for idx in df.index:
         street = str(df.at[idx, "Street Address"] if "Street Address" in df.columns else "").strip()
         city   = str(df.at[idx, "City"]           if "City"           in df.columns else "").strip()
@@ -315,7 +306,6 @@ def commute_recalculate_all(payload: Dict[str, Any]):
         else:
             skipped += 1
 
-    # Write the entire DataFrame exactly once.
     df_to_sheet(cfg.TAB_LISTINGS, df)
 
     return {"updated": updated, "skipped": skipped}
