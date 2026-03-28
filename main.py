@@ -30,7 +30,7 @@ from preferredhome_api.storage.sheets_storage import (
 )
 from preferredhome_api.utils.helpers import generate_id, calculate_commute
 
-app = FastAPI(title="PreferredHome API", version="3.2.15.2")
+app = FastAPI(title="PreferredHome API", version="3.2.15.3")
 
 settings = get_settings()
 app.add_middleware(
@@ -162,7 +162,7 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.15.2"}
+    return {"ok": "PreferredHome API 3.2.15.3"}
 
 
 # -------------------------------------------------------------------
@@ -275,14 +275,18 @@ def commute_calculate(listing_id: str, payload: Dict[str, Any]):
 
 @app.post("/commute/recalculate-all")
 def commute_recalculate_all(payload: Dict[str, Any]):
+    print(f"[recalc-all] keys={list(payload.keys())} workAddress={payload.get('workAddress')!r}")
     work_address   = str(payload.get("workAddress",   "") or "").strip()
     commute_method = str(payload.get("commuteMethod", "") or "Transit").strip()
     departure_time = str(payload.get("departureTime", "") or "").strip()
+    print(f"[recalc-all] work_address={work_address!r} method={commute_method!r}")
 
     if not work_address:
+        print("[recalc-all] early return — work address empty")
         return {"updated": 0, "skipped": 0, "reason": "no work address"}
 
     df = load_listings_df()
+    print(f"[recalc-all] loaded {len(df)} listings")
 
     updated = 0
     skipped = 0
