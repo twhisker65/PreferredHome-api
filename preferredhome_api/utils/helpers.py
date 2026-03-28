@@ -1,9 +1,12 @@
 # =============================================================
-# helpers.py — PreferredHome API Build 3.2.14
-# Reverted from 3.2.15 — commute functions removed.
+# helpers.py — PreferredHome API Build 3.2.15
+# Added: calculate_commute() via Google Maps Distance Matrix API
 # =============================================================
 
+import os
 import uuid
+import requests
+from datetime import datetime, timedelta
 
 from preferredhome_api.core.config_constants import (
     LISTING_SITE_URL_KEYWORDS,
@@ -86,6 +89,97 @@ def calculate_total_monthly(row: dict) -> float:
 
 
 # -------------------------------------------------------------------
+# COMMUTE CALCULATION — Google Maps Distance Matrix API
+# -------------------------------------------------------------------
+
+_COMMUTE_MODE_MAP = {
+    "Drive":   "driving",
+    "Transit": "transit",
+    "Walk":    "walking",
+    "Bike":    "bicycling",
+}
+
+
+def _next_monday_timestamp(departure_time: str) -> int:
+    """
+    Returns a Unix timestamp for the next Monday at departure_time.
+    departure_time format: "8:00 AM", "9:30 AM", etc.
+    Defaults to 8:00 AM if blank or unparseable.
+    Always uses Monday — not today — so traffic reflects a real commute.
+    """
+    now = datetime.now()
+    # Days until next Monday (weekday 0). If today is Monday, use next Monday.
+    days_until = (7 - now.weekday()) % 7
+    if days_until == 0:
+        days_until = 7
+    next_monday = now + timedelta(days=days_until)
+
+    hour, minute = 8, 0
+    if departure_time:
+        try:
+            t = datetime.strptime(departure_time.strip(), "%I:%M %p")
+            hour, minute = t.hour, t.minute
+        except ValueError:
+            pass
+
+    target = next_monday.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return int(target.timestamp())
+
+
+def calculate_commute(
+    listing_address: str,
+    work_address: str,
+    commute_method: str,
+    departure_time: str,
+) -> int | None:
+    """
+    Calls Google Maps Distance Matrix API.
+    Returns commute time in integer minutes, or None on any failure.
+    Silently skips if GOOGLE_MAPS_API_KEY is not set.
+    Origin = work_address, Destination = listing_address.
+    """
+    api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    if not listing_address or not work_address:
+        return None
+
+    mode = _COMMUTE_MODE_MAP.get(commute_method, "transit")
+
+    params: dict = {
+        "origins":      work_address,
+        "destinations": listing_address,
+        "mode":         mode,
+        "key":          api_key,
+    }
+
+    # Driving and transit benefit from departure_time for traffic accuracy.
+    # Walk and bike ignore departure_time.
+    if mode in ("driving", "transit"):
+        params["departure_time"] = _next_monday_timestamp(departure_time)
+
+    try:
+        resp = requests.get(
+            "https://maps.googleapis.com/maps/api/distancematrix/json",
+            params=params,
+            timeout=10,
+        )
+        data = resp.json()
+        element = data["rows"][0]["elements"][0]
+        if element.get("status") != "OK":
+            return None
+        # Prefer duration_in_traffic for driving (real traffic estimate).
+        if "duration_in_traffic" in element:
+            seconds = element["duration_in_traffic"]["value"]
+        else:
+            seconds = element["duration"]["value"]
+        return max(1, round(seconds / 60))
+    except Exception:
+        return None
+
+
+# -------------------------------------------------------------------
 # DATA CLEANING (camelCase field names)
 # -------------------------------------------------------------------
 
@@ -97,34 +191,56 @@ def clean_row(row: dict) -> dict:
     to match Google Sheets boolean convention.
     """
     cleaned = {}
-    for k, v in row.items():
-        if k in BOOLEAN_FIELDS:
-            if isinstance(v, bool):
-                cleaned[k] = "TRUE" if v else "FALSE"
-            elif isinstance(v, str) and v.strip().upper() in ("TRUE", "1", "YES"):
-                cleaned[k] = "TRUE"
+    for key, value in row.items():
+        if key in BOOLEAN_FIELDS:
+            if isinstance(value, bool):
+                cleaned[key] = "TRUE" if value else "FALSE"
+            elif str(value).strip().upper() in ("TRUE", "1", "YES"):
+                cleaned[key] = "TRUE"
             else:
-                cleaned[k] = "FALSE"
-        elif k in NUMERIC_FIELDS:
-            if v in (None, "", "null"):
-                cleaned[k] = ""
+                cleaned[key] = "FALSE"
+        elif key in NUMERIC_FIELDS:
+            if value in (None, "", "null", "nan"):
+                cleaned[key] = ""
             else:
                 try:
-                    f = float(str(v))
-                    import math
-                    if math.isnan(f) or math.isinf(f):
-                        cleaned[k] = ""
-                    else:
-                        cleaned[k] = int(f) if f == int(f) else f
+                    cleaned[key] = float(str(value))
                 except (ValueError, TypeError):
-                    cleaned[k] = ""
-        elif k in CATEGORY_FIELDS:
-            if isinstance(v, list):
-                cleaned[k] = ", ".join(str(x) for x in v if x)
-            elif isinstance(v, str):
-                cleaned[k] = v
+                    cleaned[key] = ""
+        elif key in CATEGORY_FIELDS:
+            if isinstance(value, list):
+                cleaned[key] = ", ".join(str(v) for v in value)
             else:
-                cleaned[k] = ""
+                cleaned[key] = str(value) if value is not None else ""
         else:
-            cleaned[k] = "" if v is None else str(v)
+            cleaned[key] = str(value) if value is not None else ""
     return cleaned
+
+
+def parse_row(row: dict) -> dict:
+    """
+    Parses a row from Google Sheets into Python types.
+    Uses camelCase keys matching LISTINGS_COLUMNS.
+    """
+    parsed = {}
+    for key, value in row.items():
+        if key in BOOLEAN_FIELDS:
+            parsed[key] = str(value).strip().upper() in ("TRUE", "1", "YES")
+        elif key in NUMERIC_FIELDS:
+            if value in (None, ""):
+                parsed[key] = None
+            else:
+                try:
+                    parsed[key] = float(str(value))
+                except (ValueError, TypeError):
+                    parsed[key] = None
+        elif key in CATEGORY_FIELDS:
+            if isinstance(value, list):
+                parsed[key] = value
+            elif value:
+                parsed[key] = [v.strip() for v in str(value).split(",") if v.strip()]
+            else:
+                parsed[key] = []
+        else:
+            parsed[key] = str(value) if value is not None else ""
+    return parsed

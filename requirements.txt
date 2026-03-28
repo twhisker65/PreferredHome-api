@@ -4,3 +4,4 @@ gspread
 google-auth
 pandas
 python-dotenv
+requests

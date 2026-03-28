@@ -1,6 +1,7 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.2.14
-# Reverted from 3.2.15 — commute endpoints removed.
+# main.py — PreferredHome API Build 3.2.15
+# Added: commute calculation in POST/PUT handlers.
+# Added: POST /commute/recalculate-all (load once, write once).
 # =============================================================
 
 from __future__ import annotations
@@ -24,10 +25,11 @@ from preferredhome_api.storage.sheets_storage import (
     load_categories_df,
     add_category_item,
     delete_category_item,
+    df_to_sheet,
 )
-from preferredhome_api.utils.helpers import generate_id
+from preferredhome_api.utils.helpers import generate_id, calculate_commute
 
-app = FastAPI(title="PreferredHome API", version="3.2.14")
+app = FastAPI(title="PreferredHome API", version="3.2.15")
 
 settings = get_settings()
 app.add_middleware(
@@ -129,37 +131,46 @@ def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # -------------------------------------------------------------------
-# CALCULATED TOTALS INJECTION
+# CALCULATED TOTALS
 # -------------------------------------------------------------------
 
-def _safe_num(payload: Dict[str, Any], key: str) -> float:
-    v = payload.get(key, "")
-    try:
-        return float(v) if v not in ("", None) else 0.0
-    except (ValueError, TypeError):
-        return 0.0
-
-
 def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _n(key: str) -> float:
+        try:
+            return float(payload.get(key) or 0)
+        except (ValueError, TypeError):
+            return 0.0
+
     total_monthly = (
-        _safe_num(payload, "baseRent") +
-        _safe_num(payload, "petFee") +
-        _safe_num(payload, "storageRent") +
-        _safe_num(payload, "amenityFee") +
-        _safe_num(payload, "adminFee") +
-        _safe_num(payload, "utilityFee") +
-        _safe_num(payload, "parkingFee") +
-        _safe_num(payload, "otherFee")
+        _n("baseRent") + _n("parkingFee") + _n("amenityFee") +
+        _n("adminFee") + _n("utilityFee") + _n("otherFee")
     )
     total_upfront = (
-        _safe_num(payload, "securityDeposit") +
-        _safe_num(payload, "applicationFee") +
-        _safe_num(payload, "brokerFee") +
-        _safe_num(payload, "moveInFee")
+        _n("securityDeposit") + _n("applicationFee") +
+        _n("brokerFee") + _n("moveInFee")
     )
-    payload["totalMonthly"] = round(total_monthly, 2)
-    payload["totalUpfront"] = round(total_upfront, 2)
+    payload = dict(payload)
+    payload["totalMonthly"] = total_monthly
+    payload["totalUpfront"] = total_upfront
     return payload
+
+
+# -------------------------------------------------------------------
+# COMMUTE HELPER — extract commute profile fields from payload
+# -------------------------------------------------------------------
+
+def _extract_commute_fields(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], str, str, str]:
+    """
+    Pops workAddress, commuteMethod, departureTime from payload (if present).
+    These are profile fields — not listing columns — so they must be removed
+    before the payload is passed to the sheet layer.
+    Returns (cleaned_payload, work_address, commute_method, departure_time).
+    """
+    payload = dict(payload)
+    work_address    = str(payload.pop("workAddress",    "") or "").strip()
+    commute_method  = str(payload.pop("commuteMethod",  "") or "Transit").strip()
+    departure_time  = str(payload.pop("departureTime",  "") or "").strip()
+    return payload, work_address, commute_method, departure_time
 
 
 # -------------------------------------------------------------------
@@ -168,7 +179,7 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.14"}
+    return {"ok": "PreferredHome API 3.2.15"}
 
 
 # -------------------------------------------------------------------
@@ -178,9 +189,10 @@ def health():
 @app.get("/listings")
 def listings_get():
     try:
-        api_to_sheet, sheet_to_api = build_listings_keymaps()
         df = load_listings_df()
-        df = df.fillna("").replace([float("inf"), float("-inf")], "")
+        import numpy as np
+        df = df.replace([np.inf, -np.inf], "").fillna("")
+        api_to_sheet, sheet_to_api = build_listings_keymaps()
         rows = df.to_dict(orient="records")
         return [sheet_row_to_api(r, sheet_to_api) for r in rows]
     except Exception as e:
@@ -193,6 +205,21 @@ def listings_post(payload: Dict[str, Any]):
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         payload = _sanitize_payload(payload)
         payload = _inject_calculated_totals(payload)
+
+        # Extract commute profile fields — these are not listing columns.
+        payload, work_address, commute_method, departure_time = _extract_commute_fields(payload)
+
+        # Calculate commute before saving so it goes into the row in one write.
+        if work_address:
+            street = str(payload.get("streetAddress", "") or "").strip()
+            city   = str(payload.get("city",          "") or "").strip()
+            state  = str(payload.get("state",         "") or "").strip()
+            listing_address = ", ".join(p for p in [street, city, state] if p)
+            if listing_address:
+                mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
+                if mins is not None:
+                    payload["commuteTime"] = mins
+
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
         if "id" not in sheet_payload and "ID" not in sheet_payload:
             sheet_payload["id"] = generate_id()
@@ -211,6 +238,21 @@ def listings_put(listing_id: str, payload: Dict[str, Any]):
         api_to_sheet, sheet_to_api = build_listings_keymaps()
         payload = _sanitize_payload(payload)
         payload = _inject_calculated_totals(payload)
+
+        # Extract commute profile fields — these are not listing columns.
+        payload, work_address, commute_method, departure_time = _extract_commute_fields(payload)
+
+        # Calculate commute before saving so it goes into the row in one write.
+        if work_address:
+            street = str(payload.get("streetAddress", "") or "").strip()
+            city   = str(payload.get("city",          "") or "").strip()
+            state  = str(payload.get("state",         "") or "").strip()
+            listing_address = ", ".join(p for p in [street, city, state] if p)
+            if listing_address:
+                mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
+                if mins is not None:
+                    payload["commuteTime"] = mins
+
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
         sheet_payload.pop("ID", None)
         sheet_payload["id"] = listing_id
@@ -230,6 +272,53 @@ def listings_delete(listing_id: str):
         return {"ok": True}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+# -------------------------------------------------------------------
+# COMMUTE — RECALCULATE ALL
+# Load sheet ONCE. Mutate commuteTime in memory. Write ONCE.
+# Never calls update_listing() in a loop.
+# -------------------------------------------------------------------
+
+@app.post("/commute/recalculate-all")
+def commute_recalculate_all(payload: Dict[str, Any]):
+    work_address   = str(payload.get("workAddress",   "") or "").strip()
+    commute_method = str(payload.get("commuteMethod", "") or "Transit").strip()
+    departure_time = str(payload.get("departureTime", "") or "").strip()
+
+    if not work_address:
+        return {"updated": 0, "skipped": 0, "reason": "no work address"}
+
+    # Load the full sheet exactly once.
+    df = load_listings_df()
+
+    updated = 0
+    skipped = 0
+
+    # Iterate rows — calculate commute in memory, no writes inside this loop.
+    for idx in df.index:
+        street = str(df.at[idx, "Street Address"] if "Street Address" in df.columns else "").strip()
+        city   = str(df.at[idx, "City"]           if "City"           in df.columns else "").strip()
+        state  = str(df.at[idx, "State"]          if "State"          in df.columns else "").strip()
+
+        if not street:
+            skipped += 1
+            continue
+
+        listing_address = ", ".join(p for p in [street, city, state] if p)
+        mins = calculate_commute(listing_address, work_address, commute_method, departure_time)
+
+        if mins is not None:
+            if "Commute Time" in df.columns:
+                df.at[idx, "Commute Time"] = mins
+            updated += 1
+        else:
+            skipped += 1
+
+    # Write the entire DataFrame exactly once.
+    df_to_sheet(cfg.TAB_LISTINGS, df)
+
+    return {"updated": updated, "skipped": skipped}
 
 
 # -------------------------------------------------------------------
