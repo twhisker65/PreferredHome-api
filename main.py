@@ -1,10 +1,6 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.2.15.1 Hotfix
-# Fix: POST /commute/recalculate-all now loads the sheet once,
-# updates all commuteTime values in memory, then writes once.
-# Previous implementation called update_listing() per listing,
-# causing 3N Sheets API calls and blowing the per-minute quota.
-# All other logic unchanged from 3.2.15.
+# main.py — PreferredHome API Build 3.2.14
+# Reverted from 3.2.15 — commute endpoints removed.
 # =============================================================
 
 from __future__ import annotations
@@ -28,11 +24,10 @@ from preferredhome_api.storage.sheets_storage import (
     load_categories_df,
     add_category_item,
     delete_category_item,
-    df_to_sheet,
 )
-from preferredhome_api.utils.helpers import generate_id, calculate_commute_time
+from preferredhome_api.utils.helpers import generate_id
 
-app = FastAPI(title="PreferredHome API", version="3.2.15.1")
+app = FastAPI(title="PreferredHome API", version="3.2.14")
 
 settings = get_settings()
 app.add_middleware(
@@ -173,7 +168,7 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.15.1"}
+    return {"ok": "PreferredHome API 3.2.14"}
 
 
 # -------------------------------------------------------------------
@@ -235,104 +230,6 @@ def listings_delete(listing_id: str):
         return {"ok": True}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
-
-# -------------------------------------------------------------------
-# COMMUTE — Build 3.2.15
-# -------------------------------------------------------------------
-
-@app.post("/commute/calculate/{listing_id}")
-def commute_calculate(listing_id: str, payload: Dict[str, Any]):
-    """
-    Calculate commute for a single listing and merge into its row.
-    Returns { commuteTime: int } in minutes.
-    Body: { workAddress, commuteMethod, departureTime, listingAddress }
-    """
-    work_address    = str(payload.get("workAddress",    "")).strip()
-    commute_method  = str(payload.get("commuteMethod",  "Transit")).strip()
-    departure_time  = str(payload.get("departureTime",  "")).strip()
-    listing_address = str(payload.get("listingAddress", "")).strip()
-
-    if not work_address or not listing_address:
-        raise HTTPException(status_code=400, detail="workAddress and listingAddress are required")
-
-    minutes = calculate_commute_time(work_address, listing_address, commute_method, departure_time)
-    if minutes is None:
-        raise HTTPException(status_code=422, detail="Could not calculate commute time")
-
-    df = load_listings_df()
-    rows = df.fillna("").replace([float("inf"), float("-inf")], "").to_dict(orient="records")
-    existing = next((r for r in rows if str(r.get("id", "")) == str(listing_id)), None)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Listing not found")
-
-    existing["commuteTime"] = minutes
-    existing = _sanitize_payload(existing)
-    existing.pop("ID", None)
-    existing["id"] = listing_id
-
-    try:
-        update_listing(listing_id, existing)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return {"commuteTime": minutes}
-
-
-@app.post("/commute/recalculate-all")
-def commute_recalculate_all(payload: Dict[str, Any]):
-    """
-    Recalculate commute for all listings with a street address.
-    HOTFIX 3.2.15.1: Load sheet once, update all rows in memory, write once.
-    Previous version called update_listing() per listing causing quota breach.
-    Returns { updated: int, skipped: int }.
-    Body: { workAddress, commuteMethod, departureTime }
-    """
-    work_address   = str(payload.get("workAddress",   "")).strip()
-    commute_method = str(payload.get("commuteMethod", "Transit")).strip()
-    departure_time = str(payload.get("departureTime", "")).strip()
-
-    if not work_address:
-        raise HTTPException(status_code=400, detail="workAddress is required")
-
-    # Single read
-    df = load_listings_df()
-    df = df.fillna("").replace([float("inf"), float("-inf")], "")
-
-    updated = 0
-    skipped = 0
-    dirty   = False
-
-    for idx in df.index:
-        listing_id = str(df.at[idx, "id"]).strip()
-        street     = str(df.at[idx, "streetAddress"]).strip()
-
-        if not listing_id or not street:
-            skipped += 1
-            continue
-
-        city     = str(df.at[idx, "city"]).strip()
-        state    = str(df.at[idx, "state"]).strip()
-        zip_code = str(df.at[idx, "zipCode"]).strip()
-        listing_address = ", ".join(filter(None, [street, city, state, zip_code]))
-
-        minutes = calculate_commute_time(work_address, listing_address, commute_method, departure_time)
-        if minutes is None:
-            skipped += 1
-            continue
-
-        df.at[idx, "commuteTime"] = minutes
-        updated += 1
-        dirty = True
-
-    # Single write — only if anything actually changed
-    if dirty:
-        try:
-            df_to_sheet(cfg.TAB_LISTINGS, df)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    return {"updated": updated, "skipped": skipped}
 
 
 # -------------------------------------------------------------------

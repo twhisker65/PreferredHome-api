@@ -1,18 +1,9 @@
 # =============================================================
-# helpers.py — PreferredHome API Build 3.2.15
-# Changes from 3.2.11:
-# - Added os, requests, datetime imports for commute calculation.
-# - Added _get_next_monday_timestamp() — converts a time string to
-#   next Monday Unix timestamp for Google Maps departure_time param.
-# - Added calculate_commute_time() — calls Google Maps Distance
-#   Matrix API and returns commute duration in minutes or None.
-# All existing functions unchanged.
+# helpers.py — PreferredHome API Build 3.2.14
+# Reverted from 3.2.15 — commute functions removed.
 # =============================================================
 
-import os
 import uuid
-import requests
-from datetime import datetime, timedelta
 
 from preferredhome_api.core.config_constants import (
     LISTING_SITE_URL_KEYWORDS,
@@ -137,91 +128,3 @@ def clean_row(row: dict) -> dict:
         else:
             cleaned[k] = "" if v is None else str(v)
     return cleaned
-
-
-# -------------------------------------------------------------------
-# COMMUTE CALCULATION — Build 3.2.15
-# -------------------------------------------------------------------
-
-def _get_next_monday_timestamp(time_str: str) -> int:
-    """
-    Returns a Unix timestamp for the next upcoming Monday at the given time.
-    time_str format: "8:30 AM" or "11:00 PM" (matches TIME_OPTIONS in mobile).
-    Defaults to Monday 8:00 AM if blank or unparseable.
-    Always returns a future timestamp — never today even if today is Monday.
-    """
-    now = datetime.now()
-    # days_ahead: positive number of days until next Monday
-    days_ahead = (7 - now.weekday()) % 7
-    if days_ahead == 0:
-        days_ahead = 7  # if today is Monday, use next Monday
-    next_monday = now + timedelta(days=days_ahead)
-
-    hour, minute = 8, 0  # default
-    if time_str and time_str.strip():
-        for fmt in ("%I:%M %p", "%I:%M%p"):
-            try:
-                t = datetime.strptime(time_str.strip().upper(), fmt.upper())
-                hour, minute = t.hour, t.minute
-                break
-            except ValueError:
-                continue
-
-    next_monday = next_monday.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    return int(next_monday.timestamp())
-
-
-def calculate_commute_time(
-    work_address: str,
-    listing_address: str,
-    commute_method: str,
-    departure_time: str,
-) -> int | None:
-    """
-    Calls Google Maps Distance Matrix API to calculate commute duration.
-    Returns integer minutes, or None if the call fails or address is invalid.
-
-    commute_method: "Walk" | "Drive" | "Transit" | "Bike"
-    departure_time: time string like "8:30 AM", or "" to use default Monday 8 AM
-    """
-    api_key = os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
-    if not api_key:
-        return None
-
-    mode_map = {
-        "Drive":   "driving",
-        "Walk":    "walking",
-        "Transit": "transit",
-        "Bike":    "bicycling",
-    }
-    google_mode = mode_map.get(commute_method, "transit")
-
-    params: dict = {
-        "origins":      work_address,
-        "destinations": listing_address,
-        "mode":         google_mode,
-        "key":          api_key,
-    }
-
-    # Departure time applies to driving (traffic) and transit (schedule).
-    # Walk and Bike ignore it per Google Maps API behaviour.
-    if google_mode in ("driving", "transit"):
-        params["departure_time"] = _get_next_monday_timestamp(departure_time)
-
-    try:
-        resp = requests.get(
-            "https://maps.googleapis.com/maps/api/distancematrix/json",
-            params=params,
-            timeout=10,
-        )
-        data = resp.json()
-        element = data["rows"][0]["elements"][0]
-        if element.get("status") != "OK":
-            return None
-        # Use duration_in_traffic when available (driving with traffic model)
-        dur = element.get("duration_in_traffic") or element.get("duration")
-        if not dur:
-            return None
-        return round(dur["value"] / 60)  # seconds → minutes
-    except Exception:
-        return None
