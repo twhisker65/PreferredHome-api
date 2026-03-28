@@ -1,15 +1,10 @@
 # =============================================================
-# main.py — PreferredHome API Build 3.2.15
-# Changes from 3.2.13:
-# - Added calculate_commute_time import from helpers.
-# - Added POST /commute/calculate/{listing_id} endpoint.
-#   Calculates commute from work address to listing address,
-#   merges commuteTime into the existing listing row, saves.
-# - Added POST /commute/recalculate-all endpoint.
-#   Iterates all listings with a streetAddress, calculates each,
-#   updates commuteTime individually.
-# - Version string updated to 3.2.15.
-# All other logic unchanged.
+# main.py — PreferredHome API Build 3.2.15.1 Hotfix
+# Fix: POST /commute/recalculate-all now loads the sheet once,
+# updates all commuteTime values in memory, then writes once.
+# Previous implementation called update_listing() per listing,
+# causing 3N Sheets API calls and blowing the per-minute quota.
+# All other logic unchanged from 3.2.15.
 # =============================================================
 
 from __future__ import annotations
@@ -33,10 +28,11 @@ from preferredhome_api.storage.sheets_storage import (
     load_categories_df,
     add_category_item,
     delete_category_item,
+    df_to_sheet,
 )
 from preferredhome_api.utils.helpers import generate_id, calculate_commute_time
 
-app = FastAPI(title="PreferredHome API", version="3.2.15")
+app = FastAPI(title="PreferredHome API", version="3.2.15.1")
 
 settings = get_settings()
 app.add_middleware(
@@ -91,7 +87,6 @@ def build_listings_keymaps() -> Tuple[Dict[str, str], Dict[str, str]]:
         api_key = sheet_key_to_camel(col)
         sheet_to_api[col] = api_key
         api_to_sheet[_norm_api_key(api_key)] = col
-    # Common aliases
     for alias, canonical in [("preferred", "preferred"), ("id", "id")]:
         api_to_sheet.setdefault(_norm_api_key(alias), api_to_sheet.get(_norm_api_key(canonical), alias))
     return api_to_sheet, sheet_to_api
@@ -117,7 +112,6 @@ _NUMERIC_SET = set(cfg.NUMERIC_FIELDS)
 
 
 def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Replace NaN / inf with empty string. Convert numeric fields to numbers."""
     cleaned: Dict[str, Any] = {}
     for k, v in payload.items():
         if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
@@ -144,7 +138,6 @@ def _sanitize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 # -------------------------------------------------------------------
 
 def _safe_num(payload: Dict[str, Any], key: str) -> float:
-    """Safely extract a numeric value from a payload dict for calculation."""
     v = payload.get(key, "")
     try:
         return float(v) if v not in ("", None) else 0.0
@@ -153,15 +146,6 @@ def _safe_num(payload: Dict[str, Any], key: str) -> float:
 
 
 def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Calculate totalMonthly and totalUpfront from the payload fields and
-    inject them back into the payload before it is saved to the sheet.
-
-    totalMonthly = baseRent + petFee + storageRent + amenityFee +
-                   adminFee + utilityFee + parkingFee + otherFee
-
-    totalUpfront = securityDeposit + applicationFee + brokerFee + moveInFee
-    """
     total_monthly = (
         _safe_num(payload, "baseRent") +
         _safe_num(payload, "petFee") +
@@ -189,7 +173,7 @@ def _inject_calculated_totals(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.get("/health")
 def health():
-    return {"ok": "PreferredHome API 3.2.15"}
+    return {"ok": "PreferredHome API 3.2.15.1"}
 
 
 # -------------------------------------------------------------------
@@ -212,19 +196,14 @@ def listings_get():
 def listings_post(payload: Dict[str, Any]):
     try:
         api_to_sheet, sheet_to_api = build_listings_keymaps()
-
         payload = _sanitize_payload(payload)
         payload = _inject_calculated_totals(payload)
-
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
-
         if "id" not in sheet_payload and "ID" not in sheet_payload:
             sheet_payload["id"] = generate_id()
         elif "ID" in sheet_payload and "id" not in sheet_payload:
             sheet_payload["id"] = sheet_payload.pop("ID")
-
         sheet_payload = _sanitize_payload(sheet_payload)
-
         row = add_listing(sheet_payload)
         return sheet_row_to_api(row, sheet_to_api)
     except Exception as e:
@@ -235,17 +214,12 @@ def listings_post(payload: Dict[str, Any]):
 def listings_put(listing_id: str, payload: Dict[str, Any]):
     try:
         api_to_sheet, sheet_to_api = build_listings_keymaps()
-
         payload = _sanitize_payload(payload)
         payload = _inject_calculated_totals(payload)
-
         sheet_payload = api_payload_to_sheet(payload, api_to_sheet)
-
         sheet_payload.pop("ID", None)
         sheet_payload["id"] = listing_id
-
         sheet_payload = _sanitize_payload(sheet_payload)
-
         row = update_listing(listing_id, sheet_payload)
         return sheet_row_to_api(row, sheet_to_api)
     except KeyError as e:
@@ -270,10 +244,8 @@ def listings_delete(listing_id: str):
 @app.post("/commute/calculate/{listing_id}")
 def commute_calculate(listing_id: str, payload: Dict[str, Any]):
     """
-    Calculate commute time from work address to a single listing address.
-    Merges the result into the existing listing row and saves it.
+    Calculate commute for a single listing and merge into its row.
     Returns { commuteTime: int } in minutes.
-
     Body: { workAddress, commuteMethod, departureTime, listingAddress }
     """
     work_address    = str(payload.get("workAddress",    "")).strip()
@@ -286,9 +258,8 @@ def commute_calculate(listing_id: str, payload: Dict[str, Any]):
 
     minutes = calculate_commute_time(work_address, listing_address, commute_method, departure_time)
     if minutes is None:
-        raise HTTPException(status_code=422, detail="Could not calculate commute time — check addresses and API key")
+        raise HTTPException(status_code=422, detail="Could not calculate commute time")
 
-    # Load existing row, merge commuteTime, save — avoids wiping other fields
     df = load_listings_df()
     rows = df.fillna("").replace([float("inf"), float("-inf")], "").to_dict(orient="records")
     existing = next((r for r in rows if str(r.get("id", "")) == str(listing_id)), None)
@@ -311,10 +282,10 @@ def commute_calculate(listing_id: str, payload: Dict[str, Any]):
 @app.post("/commute/recalculate-all")
 def commute_recalculate_all(payload: Dict[str, Any]):
     """
-    Recalculate commute time for all listings that have a street address.
-    Skips listings with no streetAddress. Updates each listing individually.
+    Recalculate commute for all listings with a street address.
+    HOTFIX 3.2.15.1: Load sheet once, update all rows in memory, write once.
+    Previous version called update_listing() per listing causing quota breach.
     Returns { updated: int, skipped: int }.
-
     Body: { workAddress, commuteMethod, departureTime }
     """
     work_address   = str(payload.get("workAddress",   "")).strip()
@@ -324,23 +295,25 @@ def commute_recalculate_all(payload: Dict[str, Any]):
     if not work_address:
         raise HTTPException(status_code=400, detail="workAddress is required")
 
+    # Single read
     df = load_listings_df()
-    rows = df.fillna("").replace([float("inf"), float("-inf")], "").to_dict(orient="records")
+    df = df.fillna("").replace([float("inf"), float("-inf")], "")
 
     updated = 0
     skipped = 0
+    dirty   = False
 
-    for row in rows:
-        listing_id = str(row.get("id", "")).strip()
-        street     = str(row.get("streetAddress", "")).strip()
+    for idx in df.index:
+        listing_id = str(df.at[idx, "id"]).strip()
+        street     = str(df.at[idx, "streetAddress"]).strip()
 
         if not listing_id or not street:
             skipped += 1
             continue
 
-        city    = str(row.get("city",    "")).strip()
-        state   = str(row.get("state",   "")).strip()
-        zip_code = str(row.get("zipCode", "")).strip()
+        city     = str(df.at[idx, "city"]).strip()
+        state    = str(df.at[idx, "state"]).strip()
+        zip_code = str(df.at[idx, "zipCode"]).strip()
         listing_address = ", ".join(filter(None, [street, city, state, zip_code]))
 
         minutes = calculate_commute_time(work_address, listing_address, commute_method, departure_time)
@@ -348,16 +321,16 @@ def commute_recalculate_all(payload: Dict[str, Any]):
             skipped += 1
             continue
 
-        row["commuteTime"] = minutes
-        row = _sanitize_payload(row)
-        row.pop("ID", None)
-        row["id"] = listing_id
+        df.at[idx, "commuteTime"] = minutes
+        updated += 1
+        dirty = True
 
+    # Single write — only if anything actually changed
+    if dirty:
         try:
-            update_listing(listing_id, row)
-            updated += 1
-        except Exception:
-            skipped += 1
+            df_to_sheet(cfg.TAB_LISTINGS, df)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     return {"updated": updated, "skipped": skipped}
 
@@ -372,9 +345,7 @@ def baseline_key_to_camel(k: str) -> str:
     return sheet_key_to_camel(k)
 
 
-def build_baseline_keymaps(
-    existing: Dict[str, Any]
-) -> Tuple[Dict[str, str], Dict[str, str]]:
+def build_baseline_keymaps(existing: Dict[str, Any]) -> Tuple[Dict[str, str], Dict[str, str]]:
     sheet_keys = [str(k) for k in (existing or {}).keys()]
     sheet_to_api = {k: baseline_key_to_camel(k) for k in sheet_keys}
     api_to_sheet = {_norm_api_key(v): k for k, v in sheet_to_api.items()}
