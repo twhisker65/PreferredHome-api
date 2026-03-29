@@ -1,9 +1,8 @@
 # =============================================================
-# config_constants.py — PreferredHome API Build 3.2.14
-# Based on Build 3.2.13.1 — identical except:
-#   LISTING_SITE_OPTIONS updated to 13-item list
-#   LISTING_SITE_URL_KEYWORDS updated to match new list
-# No other changes.
+# config_constants.py — PreferredHome API Build 3.2.17
+# Based on Build 3.2.14 / 3.2.15 / 3.2.16.
+# Build 3.2.17: safetyScore and noiseScore added to LISTINGS_COLUMNS
+# and NUMERIC_FIELDS. No other changes.
 # =============================================================
 
 # -------------------------------------------------------------------
@@ -157,7 +156,7 @@ LISTINGS_COLUMNS = [
     "totalUpfront",
     "securityDeposit",
     "applicationFee",
-    # Transportation
+    # Transportation / Neighborhood scores
     "commuteTime",
     "walkScore",
     "transitScore",
@@ -196,6 +195,9 @@ LISTINGS_COLUMNS = [
     "privateOutdoorSpaceTypes",
     "storageTypes",
     "roomTypes",
+    # New fields — Build 3.2.17
+    "safetyScore",
+    "noiseScore",
 ]
 
 # -------------------------------------------------------------------
@@ -232,6 +234,8 @@ NUMERIC_FIELDS = [
     "walkScore",
     "transitScore",
     "bikeScore",
+    "safetyScore",
+    "noiseScore",
     "elementaryRating",
     "elementaryDistance",
     "middleRating",
